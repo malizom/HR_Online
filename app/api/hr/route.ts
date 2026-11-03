@@ -21,6 +21,7 @@ import { acknowledge, adminDashboard, auditView, issueParticulars, managerDashbo
 import { addHoliday, applyClosure, changePolicy, createDelegation, listDelegations, previewClosure, revokeDelegation, setRoute, settingsView, updateBranding } from "@/modules/settings";
 import { runImport } from "@/modules/imports";
 import { can, navFor } from "@/modules/permissions";
+import { isDemoFirm } from "@/modules/identity/auth";
 import { schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { directReportIds } from "@/modules/workflow/routing";
@@ -112,6 +113,7 @@ async function state(ctx: Ctx) {
       emergencyContact: contacts[0] ? { name: contacts[0].name, relationship: contacts[0].relationship, phone: contacts[0].phone } : null,
       leave, calendar: cal, today, departments, leaveTypes,
       categories: categories.filter(c => c.isRequired).map(c => ({ code: c.code, label: c.label, description: c.description ?? "", appliesWhen: c.appliesWhen, required: c.isRequired })),
+      demo: isDemoFirm(ctx.firm),
       firm: { name: branding?.brandName ?? ctx.firm.displayName, primary: branding?.primaryColour ?? "#29553d", accent: branding?.accentColour ?? "#6a9872" },
     };
   });

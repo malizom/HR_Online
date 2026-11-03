@@ -13,6 +13,16 @@ import { addDays, weekday } from "@/modules/leave/engine";
 
 const URL = "http://demo.localhost:3000/";
 
+/** Jobs entry: seed once, only for demo firms (DEMO_FIRMS), and only while the firm has no leave yet. */
+export async function seedDemoIfEmpty(firm: { id: string; slug: string }) {
+  const demo = (process.env.DEMO_FIRMS ?? "").split(",").map(s => s.trim()).includes(firm.slug);
+  if (!demo) return { skipped: "not a demo firm" };
+  const [any] = await withFirm(firm.id, tx => tx.select({ id: schema.leaveRequests.id }).from(schema.leaveRequests).limit(1));
+  if (any) return { skipped: "already seeded" };
+  await seedDemoActivity(firm.id);
+  return { seeded: true };
+}
+
 export async function seedDemoActivity(firmId: string) {
   const [firm] = await platformDb.select().from(schema.firms).where(eq(schema.firms.id, firmId));
   const people = await withFirm(firmId, tx => tx.select().from(schema.people));
@@ -28,42 +38,47 @@ export async function seedDemoActivity(firmId: string) {
 
   // History (raised by HR on behalf, so the notice rule warns instead of refusing).
   const past = await requestLeave(ctx("Tamlyn"), {
-    personId: by("Ayanda").id, type: "annual", start: monday(-8), end: addDays(monday(-8), 4), note: "Family holiday",
-    coverPersonId: by("Kagiso").id, coverItems: [{ matterRef: "LIT/2026/014", itemType: "filing_deadline", due: addDays(monday(-8), 2) }],
+    personId: by("Ivan").id, type: "annual", start: monday(-8), end: addDays(monday(-8), 4), note: "Family holiday",
+    coverPersonId: by("Muano").id, coverItems: [{ matterRef: "LIT/2026/014", itemType: "filing_deadline", due: addDays(monday(-8), 2) }],
   }, URL);
-  await decideLeave(ctx("Kagiso"), past.id, "accept_cover");
-  await decideLeave(ctx("Lindiwe"), past.id, "approve");
+  await decideLeave(ctx("Muano"), past.id, "accept_cover");
+  await decideLeave(ctx("Robyn"), past.id, "approve");
 
+  const tana = await requestLeave(ctx("Tamlyn"), { personId: by("Tana").id, type: "annual", start: monday(-4), end: addDays(monday(-4), 2),
+    coverPersonId: by("Tumelo").id }, URL);
+  await decideLeave(ctx("Tumelo"), tana.id, "accept_cover");
+  await decideLeave(ctx("Maphanga"), tana.id, "approve");
+
+  // Sensitive scenarios — fictional people only.
   const sick = await requestLeave(ctx("Tamlyn"), { personId: by("Pieter").id, type: "sick", start: addDays(monday(-3), 1), end: addDays(monday(-3), 1) }, URL);
-  await decideLeave(ctx("Johan"), sick.id, "approve");
-
+  await decideLeave(ctx("Eduan"), sick.id, "approve");
   const fam = await requestLeave(ctx("Tamlyn"), { personId: by("Sarah").id, type: "family", start: addDays(monday(-5), 4), end: addDays(monday(-5), 4), reason: "Child ill" }, URL);
-  await decideLeave(ctx("Lindiwe"), fam.id, "approve");
+  await decideLeave(ctx("Robyn"), fam.id, "approve");
+  await requestLeave(ctx("Tamlyn"), { personId: by("Sarah").id, type: "sick", start: monday(-1), end: addDays(monday(-1), 2) }, URL);
 
-  // Sick leave needing a certificate (3 consecutive days) — waiting on the manager.
-  await requestLeave(ctx("Tamlyn"), { personId: by("Ayanda").id, type: "sick", start: monday(-1), end: addDays(monday(-1), 2) }, URL);
-
-  // Upcoming: approved with cover (shows on the calendar), pending approval, awaiting cover.
-  const johan = await requestLeave(ctx("Johan"), {
-    type: "annual", start: monday(4), end: addDays(monday(4), 4), note: "Year-end break", coverPersonId: by("Pieter").id,
-    coverItems: [{ matterRef: "CONV/2026/221", itemType: "consultation", due: `${addDays(monday(4), 1)}T10:00`, location: "Boardroom 2" }],
+  // Upcoming: approved with cover (on the calendar), pending approval, awaiting cover.
+  const eduan = await requestLeave(ctx("Eduan"), {
+    type: "annual", start: monday(4), end: addDays(monday(4), 4), note: "Year-end break", coverPersonId: by("Siyabonga").id,
+    coverItems: [{ matterRef: "BF/2026/221", itemType: "consultation", due: `${addDays(monday(4), 1)}T10:00`, location: "Boardroom 2" }],
   }, URL);
-  await decideLeave(ctx("Pieter"), johan.id, "accept_cover");
-  await decideLeave(ctx("Mpho"), johan.id, "approve");
+  await decideLeave(ctx("Siyabonga"), eduan.id, "accept_cover");
+  await decideLeave(ctx("Matodzi"), eduan.id, "approve");
 
   await requestLeave(ctx("Sarah"), { type: "annual", start: addDays(monday(3), 2), end: addDays(monday(3), 4), note: "Moving house" }, URL);
-  await requestLeave(ctx("Kagiso"), {
+  await requestLeave(ctx("Muano"), {
     type: "annual", start: monday(5), end: addDays(monday(5), 1), startHalf: null, endHalf: "am", note: "Board exam preparation",
-    coverPersonId: by("Ayanda").id, coverItems: [{ matterRef: "LIT/2026/031", itemType: "court_date", due: `${monday(5)}T09:30`, location: "Johannesburg High Court" }],
+    coverPersonId: by("Ivan").id, coverItems: [{ matterRef: "LIT/2026/031", itemType: "court_date", due: `${monday(5)}T09:30`, location: "Johannesburg High Court" }],
   }, URL);
-  await requestLeave(ctx("Lindiwe"), { type: "annual", start: monday(6), end: addDays(monday(6), 2), coverPersonId: by("Ayanda").id }, URL).then(r => decideLeave(ctx("Ayanda"), r.id, "accept_cover"));
-  await requestLeave(ctx("Mpho"), { type: "annual", start: addDays(monday(7), 3), end: addDays(monday(7), 4), coverPersonId: by("Lindiwe").id }, URL)
-    .then(r => decideLeave(ctx("Lindiwe"), r.id, "accept_cover"));
+  await requestLeave(ctx("Malaika"), { type: "annual", start: monday(6), end: addDays(monday(6), 1), coverPersonId: by("Mashudu").id }, URL)
+    .then(r => decideLeave(ctx("Mashudu"), r.id, "accept_cover"));
+  await requestLeave(ctx("Robyn"), { type: "annual", start: monday(6), end: addDays(monday(6), 2), coverPersonId: by("Ivan").id }, URL).then(r => decideLeave(ctx("Ivan"), r.id, "accept_cover"));
+  await requestLeave(ctx("Matodzi"), { type: "annual", start: addDays(monday(7), 3), end: addDays(monday(7), 4), coverPersonId: by("Robyn").id }, URL)
+    .then(r => decideLeave(ctx("Robyn"), r.id, "accept_cover"));
 
   // Written particulars issued to everyone onboarded; most have acknowledged.
   for (const p of people.filter(x => x.onboardingStatus === "complete" || x.firstName === "Tamlyn")) {
     const doc = await issueParticulars(ctx("Tamlyn"), p.id);
-    if (!["Kagiso", "Pieter"].includes(p.firstName)) await acknowledge(ctx(p.firstName), doc.id, { ip: "127.0.0.1", userAgent: "seed" });
+    if (!["Siyabonga", "Pieter"].includes(p.firstName)) await acknowledge(ctx(p.firstName), doc.id, { ip: "127.0.0.1", userAgent: "seed" });
   }
 
   // A newly invited associate has submitted details and an ID document that HR has not yet reviewed.

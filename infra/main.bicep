@@ -31,6 +31,14 @@ param deployApps bool = true
 @description('Daily jobs schedule (UTC cron). 0 0 * * * = 02:00 SAST')
 param jobsCron string = '0 0 * * *'
 
+@description('Demo tenants (slugs) that get persona sign-in and are seeded with demo data. Empty in production.')
+param demoFirms string = ''
+@description('Extra hosts for the demo tenant, e.g. demo.people.mvulatelecoms.com. The Azure default host is always added.')
+param demoHosts string = ''
+@secure()
+@description('Access code for demo persona sign-in. Passed from the GitHub secret DEMO_ACCESS_CODE.')
+param demoAccessCode string = ''
+
 var n = '${prefix}-${env}'
 var nFlat = toLower(replace('${prefix}${env}', '-', ''))
 var uniq = substring(uniqueString(resourceGroup().id), 0, 6)
@@ -301,6 +309,9 @@ var appEnv = concat(commonEnv, [
   { name: 'AUTH_SECRET', secretRef: 'auth-secret' }
   { name: 'DATA_ENCRYPTION_KEY', secretRef: 'data-encryption-key' }
 ])
+var demoEnv = empty(demoFirms) ? [] : concat([{ name: 'DEMO_FIRMS', value: demoFirms }], empty(demoAccessCode) ? [] : [{ name: 'DEMO_ACCESS_CODE', secretRef: 'demo-access-code' }])
+var demoSecrets = empty(demoFirms) || empty(demoAccessCode) ? [] : [{ name: 'demo-access-code', value: demoAccessCode }]
+var webHost = '${prefix}-web.${caEnv.properties.defaultDomain}'
 var appSecrets = [
   { name: 'auth-secret', keyVaultUrl: '${kv.properties.vaultUri}secrets/auth-secret', identity: appId.id }
   { name: 'data-encryption-key', keyVaultUrl: '${kv.properties.vaultUri}secrets/data-encryption-key', identity: appId.id }
@@ -317,7 +328,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
     configuration: {
       ingress: { external: true, targetPort: 3000, transport: 'auto', allowInsecure: false }
       registries: [{ server: acr.properties.loginServer, identity: appId.id }]
-      secrets: appSecrets
+      secrets: concat(appSecrets, demoSecrets)
       activeRevisionsMode: 'Single'
     }
     template: {
@@ -325,7 +336,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (deployApps) {
         name: 'web'
         image: image
         resources: { cpu: json('0.5'), memory: '1Gi' }
-        env: appEnv
+        env: concat(appEnv, demoEnv)
         probes: [
           { type: 'Liveness', httpGet: { path: '/api/health', port: 3000 }, periodSeconds: 30 }
           { type: 'Readiness', httpGet: { path: '/api/ready', port: 3000 }, periodSeconds: 15 }
@@ -351,7 +362,7 @@ resource jobs 'Microsoft.App/jobs@2024-03-01' = if (deployApps) {
       replicaTimeout: 1800
       replicaRetryLimit: 1
       registries: [{ server: acr.properties.loginServer, identity: appId.id }]
-      secrets: appSecrets
+      secrets: concat(appSecrets, demoSecrets)
     }
     template: {
       containers: [{
@@ -359,7 +370,7 @@ resource jobs 'Microsoft.App/jobs@2024-03-01' = if (deployApps) {
         image: image
         command: ['node', '--import', 'tsx', 'jobs/run.ts']
         resources: { cpu: json('0.5'), memory: '1Gi' }
-        env: appEnv
+        env: concat(appEnv, demoEnv)
       }]
     }
   }
@@ -385,12 +396,16 @@ resource migrate 'Microsoft.App/jobs@2024-03-01' = if (deployApps) {
       containers: [{
         name: 'migrate'
         image: image
-        command: ['node', '--import', 'tsx', 'scripts/migrate.ts']
+        command: ['sh', '-c', 'node --import tsx scripts/migrate.ts && node --import tsx db/seed/run.ts']
         resources: { cpu: json('0.5'), memory: '1Gi' }
         env: concat(commonEnv, [
           { name: 'AZURE_CLIENT_ID', value: migrateId.properties.clientId }
           { name: 'MIGRATION_DATABASE_URL', value: 'postgresql://${migrateId.name}@${pgHost}:5432/people?sslmode=require' }
           { name: 'APP_DB_PRINCIPAL', value: appId.name }
+          { name: 'DATABASE_URL', value: 'postgresql://${migrateId.name}@${pgHost}:5432/people?sslmode=require' }
+          { name: 'SEED_DEMO', value: empty(demoFirms) ? 'false' : 'true' }
+          { name: 'SEED_DEMO_ACTIVITY', value: 'false' }
+          { name: 'DEMO_HOSTS', value: empty(demoHosts) ? webHost : '${webHost},${demoHosts}' }
         ])
       }]
     }

@@ -42,6 +42,7 @@ jobs:
           CURRENT=$(az containerapp show -g "$RG" -n pp-web --query "properties.template.containers[0].image" -o tsv 2>/dev/null || true)
           OUT=$(az deployment group create -g "$RG" --name "pp-${{ github.run_number }}" \
             --parameters "infra/params/${{ vars.PARAM_FILE }}" \
+            --parameters demoAccessCode="${{ secrets.DEMO_ACCESS_CODE }}" \
             ${CURRENT:+--parameters image="$CURRENT"} \
             --query properties.outputs -o json)
           echo "acr=$(echo "$OUT" | jq -r .acrName.value)" >> "$GITHUB_OUTPUT"
@@ -71,6 +72,10 @@ jobs:
         run: |
           az containerapp update -g "$RG" -n pp-web --image "${{ steps.image.outputs.ref }}" -o none
           az containerapp job update -g "$RG" -n pp-jobs --image "${{ steps.image.outputs.ref }}" -o none
+
+      - name: Run the jobs once (posts accrual; seeds a demo tenant on its first deploy)
+        if: vars.PARAM_FILE == 'staging.bicepparam'
+        run: az containerapp job start -g "$RG" -n pp-jobs -o none
 
       - name: Smoke test
         run: |
