@@ -10,6 +10,7 @@ import { closeDb, platformDb, schema } from "@/lib/db";
 import type { Firm } from "@/lib/tenancy";
 import { dispatchDue } from "@/modules/notifications";
 import { offboardDue } from "@/modules/admin";
+import { seedDemoIfEmpty } from "@/db/seed/demo-activity";
 import { accrueAll, cycleEndAll, rebuildBalances, todayIn } from "@/modules/leave";
 
 type Job = (firm: Firm) => Promise<Record<string, unknown>>;
@@ -18,6 +19,7 @@ type Job = (firm: Firm) => Promise<Record<string, unknown>>;
 const today = (firm: Firm) => process.env.JOB_TODAY ?? todayIn(firm.timezone);
 
 const JOBS: Record<string, Job> = {
+  "seed-demo": firm => seedDemoIfEmpty(firm),
   offboard: firm => offboardDue(firm.id, today(firm)),
   "cycle-end": firm => cycleEndAll(firm.id, today(firm)),
   accrue: firm => accrueAll(firm.id, today(firm)),

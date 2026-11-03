@@ -111,6 +111,7 @@ export default function PeoplePortal() {
             </div>
           </div>
 
+          {data?.demo && <div className="warn">Demo environment — names are from the firm’s public team page; every leave record, document and figure is invented. <a href="/api/auth/signout">Switch person</a></div>}
           {error && (
             <div role="alert" className="error">{error}{!data && <a href="/signin"> Sign in</a>}</div>
           )}

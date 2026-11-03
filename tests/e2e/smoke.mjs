@@ -40,7 +40,7 @@ try {
   }
 
   // Admin home dashboard and navigation from the permission model.
-  const hr = await as("hr@demo.test");
+  const hr = await as("tamlyn.hulley@demo.test");
   const hrNav = await hr.locator("nav button").allTextContents();
   check("admin navigation includes People, Settings, Audit, Reports", ["People", "Settings", "Audit", "Reports"].every(n => hrNav.some(x => x.includes(n))), hrNav.join(","));
   check("admin dashboard tiles render", await hr.isVisible("text=Leave awaiting decision"));
@@ -50,10 +50,10 @@ try {
   await hr.click('button:has-text("Add staff member")');
   await hr.fill('.modal input[name="name"]', "Zola Newhire");
   await hr.fill('.modal input[name="email"]', "zola.newhire@demo.test");
-  await hr.selectOption('.modal select[name="reportsToId"]', { label: "Lindiwe Litigator — Director: Litigation" });
+  await hr.selectOption('.modal select[name="reportsToId"]', { label: "Robyn Adams — Executive: Dispute Resolution" });
   await hr.click('.modal button:has-text("Add staff member")');
   await hr.waitForSelector(".listrow:has-text('Zola Newhire')");
-  check("new starter added under Lindiwe", (await hr.locator(".listrow:has-text('Zola Newhire') small").last().textContent()).includes("Reports to Lindiwe Litigator"));
+  check("new starter added under Robyn", (await hr.locator(".listrow:has-text('Zola Newhire') small").last().textContent()).includes("Reports to Robyn Adams"));
 
   // U3 — a rejection needs a reason.
   await nav(hr, "Documents to review");
@@ -77,13 +77,13 @@ try {
   check("pending days are reserved from the balance", Math.abs(await annualNow(sa) - (saBefore - total)) < 0.01, `${saBefore} → ${await annualNow(sa)}`);
 
   // U5–U7 — fee-earner must arrange cover; colleague accepts; manager approves.
-  const ay = await as("ayanda.associate@demo.test");
+  const ay = await as("ivan.phahle@demo.test");
   await nav(ay, "My leave");
   const ayBefore = await annualNow(ay);
   await requestLeave(ay, monday(10), plus(monday(10), 1));
   await ay.waitForSelector("text=Matter cover while you are away");
   check("submit is blocked until a covering colleague is chosen", await ay.locator('button:has-text("Submit request")').isDisabled());
-  await ay.selectOption('select:has(option:text("Choose a colleague…"))', { label: "Kagiso Candidate — Litigation" });
+  await ay.selectOption('select:has(option:text("Choose a colleague…"))', { label: "Muano Ramurunzi — Dispute Resolution" });
   await ay.click('button:has-text("Add a matter item")');
   await ay.fill('input[aria-label="Matter reference"]', "LIT/2026/077");
   await ay.fill('input[aria-label="When"]', `${monday(10)}T09:30`);
@@ -91,39 +91,39 @@ try {
   await ay.waitForSelector(".approval:has-text('Awaiting cover')");
   check("request waits for cover first", true);
 
-  const li = await as("lindiwe.litigator@demo.test");
+  const li = await as("robyn.adams@demo.test");
   await nav(li, "Approvals");
-  check("manager does not get it before cover is accepted", (await li.locator(`.approval:has-text("Ayanda"):has-text("${monday(10).slice(8, 10).replace(/^0/, "")}")`).count()) === 0 || await li.isVisible("text=Waiting for cover"));
+  check("manager does not get it before cover is accepted", (await li.locator(`.approval:has-text("Ivan"):has-text("${monday(10).slice(8, 10).replace(/^0/, "")}")`).count()) === 0 || await li.isVisible("text=Waiting for cover"));
 
-  const ka = await as("kagiso.candidate@demo.test");
+  const ka = await as("muano.ramurunzi@demo.test");
   await nav(ka, "My leave");
   await ka.locator(".approval:has-text('LIT/2026/077') button:has-text('Accept cover')").click();
   await ka.waitForTimeout(800);
   check("colleague accepts cover", (await ka.locator(".approval:has-text('LIT/2026/077') button:has-text('Accept cover')").count()) === 0);
 
-  const jo = await as("johan.conveyancer@demo.test");
+  const jo = await as("eduan.kapp@demo.test");
   await nav(jo, "Approvals");
-  check("another manager cannot see it", (await jo.locator(".approval:has-text('Ayanda Associate · Annual')").count()) === 0);
+  check("another manager cannot see it", (await jo.locator(".approval:has-text('Ivan Phahle · Annual')").count()) === 0);
 
   await li.reload(); await li.waitForSelector("nav button");
   await nav(li, "Approvals");
   const card = li.locator(".approval:has-text('LIT/2026/077')");
-  check("approval card shows cover and balance after", (await card.textContent()).includes("Cover: Kagiso") && (await card.textContent()).includes("Balance after"));
+  check("approval card shows cover and balance after", (await card.textContent()).includes("Cover: Muano") && (await card.textContent()).includes("Balance after"));
   await card.locator('button:has-text("Approve")').click();
   await li.waitForTimeout(800);
   check("manager approves", (await li.locator(".approval:has-text('LIT/2026/077')").count()) === 0);
 
   // V9 — sick leave needing a certificate cannot be approved by the manager.
-  const sick = li.locator(".approval:has-text('Sick'):has-text('Ayanda')");
+  const sick = li.locator(".approval:has-text('Sick'):has-text('Sarah')");
   check("certificate-required sick leave is blocked for the manager", (await sick.count()) > 0 && await sick.locator('button:has-text("Approve")').isDisabled());
 
-  // U11 — no self-approval; Lindiwe's own leave is with Mpho.
-  check("own request is not in own approvals", (await li.locator(".approval:has-text('Lindiwe Litigator')").count()) === 0);
+  // U11 — no self-approval; Robyn's own leave is with the MD.
+  check("own request is not in own approvals", (await li.locator(".approval:has-text('Robyn Adams')").count()) === 0);
 
   // E14 — cancelling approved leave returns the days.
   await ay.reload(); await ay.waitForSelector("nav button");
   await nav(ay, "My leave");
-  check("approved request offers handover confirmation", await ay.isVisible("button:has-text('Confirm handover to Kagiso')"));
+  check("approved request offers handover confirmation", await ay.isVisible("button:has-text('Confirm handover to Muano')"));
   await ay.locator(".approval:has-text('Approved') button:has-text('Cancel request')").first().click();
   await ay.waitForTimeout(800);
   check("cancel returns the days to the balance", Math.abs(await annualNow(ay) - ayBefore) < 0.01, `${ayBefore} → ${await annualNow(ay)}`);
@@ -131,9 +131,9 @@ try {
   // U12 — director routes to HR via the explicit route; HR approves.
   await hr.reload(); await hr.waitForSelector("nav button");
   await nav(hr, "Approvals");
-  await hr.locator(".approval:has-text('Mpho Director') button:has-text('Approve')").first().click();
+  await hr.locator(".approval:has-text('Matodzi Ratshimbilani') button:has-text('Approve')").first().click();
   await hr.waitForTimeout(800);
-  check("director's leave approved by HR via route", (await hr.locator(".approval:has-text('Mpho Director')").count()) === 0);
+  check("director's leave approved by HR via route", (await hr.locator(".approval:has-text('Matodzi Ratshimbilani')").count()) === 0);
 
   // Reports, payroll export, settings, audit render for HR.
   await nav(hr, "Reports");
