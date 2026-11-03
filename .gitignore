@@ -6,3 +6,5 @@ uploads/*
 tests/e2e/*.png
 .env.local
 *.tsbuildinfo
+.devcontainer/.access-code
+demo/.env

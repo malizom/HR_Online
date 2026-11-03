@@ -1,0 +1,28 @@
+# Desktop demo: the People Portal and its database on your own computer, nothing hosted, nothing billed.
+# Started by "Start MVR Demo" (Mac) or "Start MVR Demo.bat" (Windows); needs Docker Desktop.
+name: people-portal-demo
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: owner, POSTGRES_PASSWORD: owner, POSTGRES_DB: people_dev }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "owner"], interval: 2s, retries: 30 }
+  portal:
+    build: { context: .., dockerfile: Dockerfile }
+    depends_on: { db: { condition: service_healthy } }
+    ports: ["127.0.0.1:3000:3000"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://pp_app_login:demo_only_pw@db:5432/people_dev
+      MIGRATION_DATABASE_URL: postgresql://owner:owner@db:5432/people_dev
+      UPLOAD_DIR: /tmp/uploads
+      AUTH_TRUST_HOST: "true"
+      DEMO_FIRMS: demo
+      DEMO_HOSTS: localhost
+    # Migrate and seed (development mode creates the local database login), then run the production server.
+    command: >
+      sh -c "NODE_ENV=development DEV_APP_LOGIN_PASSWORD=demo_only_pw node --import tsx scripts/migrate.ts &&
+             NODE_ENV=development node --import tsx db/seed/run.ts &&
+             node server.js"
+volumes:
+  pgdata:
