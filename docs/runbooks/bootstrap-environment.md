@@ -2,13 +2,16 @@
 
 For staging, production, or a customer subscription (design doc 01 §6, §10). Run by someone with Owner on the subscription.
 
+0. **Register providers** once per subscription: `for p in Microsoft.App Microsoft.ContainerRegistry Microsoft.DBforPostgreSQL Microsoft.KeyVault Microsoft.OperationalInsights Microsoft.Insights Microsoft.Network Microsoft.Storage Microsoft.ManagedIdentity; do az provider register -n $p; done`
 1. **Resource group** in South Africa North:
    `az group create -n rg-pp-<env> -l southafricanorth`
 2. **Deployment identity for GitHub (OIDC — no secrets in GitHub):**
    ```bash
    az identity create -g rg-pp-<env> -n pp-<env>-id-github
    az role assignment create --assignee-object-id <principalId> --assignee-principal-type ServicePrincipal \
-     --role Owner --scope /subscriptions/<sub>/resourceGroups/rg-pp-<env>      # Owner: the template assigns roles
+     --role Contributor --scope /subscriptions/<sub>/resourceGroups/rg-pp-<env>
+   az role assignment create --assignee-object-id <principalId> --assignee-principal-type ServicePrincipal \
+     --role "Role Based Access Control Administrator" --scope /subscriptions/<sub>/resourceGroups/rg-pp-<env>   # template assigns roles
    az identity federated-credential create -g rg-pp-<env> --identity-name pp-<env>-id-github -n github-<env> \
      --issuer https://token.actions.githubusercontent.com \
      --subject repo:<owner>/<repo>:environment:<github-environment> --audiences api://AzureADTokenExchange
@@ -25,6 +28,7 @@ For staging, production, or a customer subscription (design doc 01 §6, §10). R
    az keyvault secret set --vault-name <kv> -n data-encryption-key --value "$(openssl rand -base64 32)"
    ```
    Store a copy of `data-encryption-key` in Mvula's offline vault — without it, encrypted fields are unrecoverable.
-6. **Run the `deploy` workflow** (manual dispatch, choose the environment). It deploys apps, runs migrations
+6. **Turn deployment on:** repository variable `DEPLOY_ENABLED=true` (Settings → Secrets and variables → Actions → Variables).
+   Then **run the `deploy` workflow** (manual dispatch, choose the environment). It deploys apps, runs migrations
    (which grant the app identity membership of `pp_app`), rolls out and smoke-tests.
 7. **Provision the first firm** (see `add-tenant.md`), then add the custom domain (see `custom-domain.md`).
