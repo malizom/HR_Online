@@ -2,6 +2,7 @@
  * Admin and reporting (doc 06 S4, S12, S14, S16; doc 05 §6; doc 07 §4; doc 08 §3).
  * Dashboard, person file, written particulars, offboarding, audit view, reports, payroll export, "download my information".
  */
+import { recordEmploymentChanges } from "../hr";
 import crypto from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -99,6 +100,7 @@ export async function updatePerson(ctx: Ctx, personId: string, raw: unknown) {
     role: z.enum(["admin", "manager", "staff", "viewer"]).optional(), employeeNo: z.string().trim().max(30).nullable().optional(),
     employmentType: z.enum(["permanent", "fixed_term", "candidate_attorney", "contractor", "part_time"]).optional(),
     isFeeEarner: z.boolean().optional(), workPattern: z.array(z.number().int().min(1).max(7)).min(1).max(7).nullable().optional(), startDate: ISO.optional(),
+    jobTitle: z.string().trim().min(2).max(80).optional(), isAdmittedAttorney: z.boolean().optional(), effectiveDate: ISO.optional(),
   }).safeParse(raw);
   if (!r.success) throw new UserError("Check the employment details.");
   await withFirm(ctx.firm.id, async tx => {
@@ -111,7 +113,12 @@ export async function updatePerson(ctx: Ctx, personId: string, raw: unknown) {
         cur = m?.up ?? null;
       }
     }
-    await tx.update(schema.people).set({ ...r.data, updatedAt: new Date() }).where(eq(schema.people.id, personId));
+    const { effectiveDate, ...changes } = r.data;
+    const [before] = await tx.select().from(schema.people).where(eq(schema.people.id, personId));
+    if (!before) throw new UserError("Person not found.", 404);
+    await tx.update(schema.people).set({ ...changes, updatedAt: new Date() }).where(eq(schema.people.id, personId));
+    // D2: every employment change becomes a dated entry on the person's history.
+    await recordEmploymentChanges(tx, ctx, before, changes, effectiveDate ?? todayIn(ctx.firm.timezone));
     await audit(tx, ctx.actor, "person.update", "person", personId, r.data);
   });
 }
@@ -189,7 +196,8 @@ export async function pendingAcknowledgements(tx: Tx, ctx: Ctx) {
 export async function acknowledge(ctx: Ctx, ackDocumentId: string, meta: { ip?: string | null; userAgent?: string | null; typedName?: string }) {
   await withFirm(ctx.firm.id, async tx => {
     const [d] = await tx.select().from(schema.ackDocuments).where(eq(schema.ackDocuments.id, ackDocumentId));
-    if (!d || d.personId !== ctx.person.id) throw new UserError("Document not found.", 404);
+    // Personal documents (particulars) belong to one person; firm-wide policies (G2/G3) have no person and are acknowledged by everyone.
+    if (!d || (d.personId !== null && d.personId !== ctx.person.id) || d.supersededById) throw new UserError("Document not found.", 404);
     // Evidence (doc 02 §7): which exact bytes (hash), when, from where, how.
     await tx.insert(schema.acknowledgements).values({ firmId: ctx.firm.id, ackDocumentId: d.id, personId: ctx.person.id, documentSha256: d.sha256,
       ipHash: meta.ip ? hashIdentifier(meta.ip) : null, userAgent: meta.userAgent?.slice(0, 200) ?? null,

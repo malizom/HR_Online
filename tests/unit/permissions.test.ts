@@ -12,6 +12,13 @@ describe("permission matrix", () => {
     [viewer, "calendar.view", {}, true],
     [viewer, "leave.request", {}, false],
     [viewer, "leave.view", { personId: "s" }, false],
+    [viewer, "roster.view", {}, true],
+    [viewer, "requests.submit", {}, false],
+    [staff, "roster.view", {}, false],
+    [manager, "reviews.manage_team", {}, true],
+    [manager, "cases.open", {}, false],
+    [admin, "cases.open", {}, true],
+    [manager, "credentials.manage", {}, false],
     [staff, "leave.request", {}, true],
     [staff, "leave.view", { personId: "s" }, true],
     [staff, "leave.view", { personId: "x", managerId: "m" }, false],
@@ -41,7 +48,7 @@ describe("permission matrix", () => {
 
 describe("navigation follows permissions", () => {
   it("viewer sees only the calendar; staff no admin pages; admin sees settings and audit", () => {
-    expect(navFor({ ...viewer, onboardingComplete: true })).toEqual(["Team calendar"]);
+    expect(navFor({ ...viewer, onboardingComplete: true })).toEqual(["Team calendar", "Roster"]);
     const s = navFor({ ...staff, onboardingComplete: true });
     expect(s).not.toContain("Approvals");
     expect(s).not.toContain("People");

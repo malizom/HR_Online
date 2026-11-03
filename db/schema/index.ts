@@ -4,6 +4,7 @@ export * from "./onboarding";
 export * from "./leave";
 export * from "./workflow";
 export * from "./ops";
+export * from "./hr";
 
 /**
  * Tables without RLS. Everything else is a tenant table and MUST have firm_id + an RLS policy;

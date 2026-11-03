@@ -5,6 +5,8 @@ import { CalendarDays, ChevronLeft, ChevronRight, Download } from "lucide-react"
 import { BalanceCards } from "./Leave";
 import { Badge, days, longDate, range, shortDate, type CalEntry, type HrData, type Post } from "./shared";
 
+import { EmployeeProfile, HomeExtras } from "./Hr";
+
 export function Home({ data, go }: { data: HrData; go: (page: string) => void }) {
   const { me, dashboard: d, team } = data;
   const today = data.today;
@@ -46,6 +48,7 @@ export function Home({ data, go }: { data: HrData; go: (page: string) => void })
         {tile("Direct reports", team.teamSize)}
       </div>
     )}
+    <HomeExtras data={data} go={go} />
     <h2>Your leave</h2>
     <BalanceCards balances={data.balances} />
     <div className="columns">
@@ -63,46 +66,22 @@ export function Home({ data, go }: { data: HrData; go: (page: string) => void })
 }
 
 export function Profile({ data, post, busy }: { data: HrData; post: Post; busy: boolean }) {
-  const { me } = data;
-  const c = data.emergencyContact;
   return (<>
-    <div className="columns">
-      <section className="card">
-        <h2>{me.name}</h2>
-        <dl className="kv">
-          <dt>Email</dt><dd>{me.email}</dd>
-          <dt>Job title</dt><dd>{me.title || "—"}</dd>
-          <dt>Department</dt><dd>{me.department || "—"}</dd>
-          <dt>Reports to</dt><dd>{data.colleagues.find(x => x.id === me.reportsToId)?.name ?? "—"}</dd>
-          <dt>Start date</dt><dd>{longDate(me.start)}</dd>
-          <dt>Employee no.</dt><dd>{me.employeeNo || "—"}</dd>
-        </dl>
-        <p className="muted-inline">To change employment details, ask HR. Your personal details are edited in onboarding.</p>
-        <a className="badge" href="/api/hr?view=myinfo"><Download size={13} /> Download my information (POPIA)</a>
-      </section>
-      <section className="card">
-        <h3>Emergency contact</h3>
-        <form onSubmit={async e => { e.preventDefault(); await post({ action: "contact", ...Object.fromEntries(new FormData(e.currentTarget)) }); }}>
-          <label>Name<input name="name" required defaultValue={c?.name} /></label>
-          <label>Relationship<input name="relationship" required defaultValue={c?.relationship} /></label>
-          <label>Phone<input name="phone" type="tel" required defaultValue={c?.phone} /></label>
-          <div className="formfooter"><span>Visible to you and HR.</span><button className="primary" disabled={busy}>Save contact</button></div>
-        </form>
-      </section>
-    </div>
-    <div className="card spaced">
-      <h2>Documents to acknowledge</h2>
-      {data.acknowledgements.length === 0 && <p>Nothing issued yet.</p>}
-      {data.acknowledgements.map(a => (
-        <div key={a.id} style={{ marginBottom: 18 }}>
-          <div className="sectiontitle"><h3>{a.title}</h3><Badge s={a.acknowledgedAt ? "Acknowledged" : "Not acknowledged"} /></div>
-          <div className="particulars">{a.text}</div>
-          {a.acknowledgedAt ? <p className="muted-inline">Acknowledged {new Date(a.acknowledgedAt).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" })}.</p>
-            : <div className="formfooter"><span>Issued {shortDate(a.issuedAt)}. Acknowledging records that you received and read it.</span>
-                <button className="primary" disabled={busy} onClick={() => post({ action: "acknowledge", id: a.id })}>I have read and received this</button></div>}
-        </div>
-      ))}
-    </div>
+    <EmployeeProfile id={data.me.id} data={data} post={post} busy={busy} />
+    {data.acknowledgements.length > 0 && (
+      <div className="card spaced">
+        <h2>Written particulars</h2>
+        {data.acknowledgements.map(a => (
+          <div key={a.id} style={{ marginBottom: 18 }}>
+            <div className="sectiontitle"><h3>{a.title}</h3><Badge s={a.acknowledgedAt ? "Acknowledged" : "Not acknowledged"} /></div>
+            <div className="particulars">{a.text}</div>
+            {a.acknowledgedAt ? <p className="muted-inline">Acknowledged {new Date(a.acknowledgedAt).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" })}.</p>
+              : <div className="formfooter"><span>Issued {shortDate(a.issuedAt)}. Acknowledging records that you received and read it.</span>
+                  <button className="primary" disabled={busy} onClick={() => post({ action: "acknowledge", id: a.id })}>I have read and received this</button></div>}
+          </div>
+        ))}
+      </div>
+    )}
   </>);
 }
 

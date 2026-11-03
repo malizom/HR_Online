@@ -10,6 +10,7 @@ import { accrueAll, decideLeave, requestLeave, rebuildBalances, todayIn } from "
 import { acknowledge, issueParticulars } from "@/modules/admin";
 import { putBytes } from "@/lib/storage";
 import { addDays, weekday } from "@/modules/leave/engine";
+import { seedDemoHr } from "./demo-hr";
 
 const URL = "http://demo.localhost:3000/";
 
@@ -91,6 +92,9 @@ export async function seedDemoActivity(firmId: string) {
     await tx.insert(schema.documents).values({ firmId, personId: thabo.id, categoryId: cat.id, fileName: "Thabo-Newstarter-CV.pdf", mime: "application/pdf",
       sizeBytes: pdf.length, blobPath, sha256: "demo" });
   });
+
+  // Full employee profile and the later-release features (R2/R3).
+  await seedDemoHr(firmId, ctx, today);
 
   await rebuildBalances(firmId, today);
 }

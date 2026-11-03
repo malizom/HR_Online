@@ -1,4 +1,5 @@
 // Onboarding submit/complete through the workflow engine (doc 02 §4, ADR-07).
+import { createProbation } from "../hr";
 import { accruePerson, todayIn } from "../leave";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { schema, withFirm, type Tx } from "@/lib/db";
@@ -46,6 +47,10 @@ export async function completeOnboarding(ctx: Ctx, personId: string) {
     const [done] = await tx.update(schema.people).set({ onboardingStatus: "complete", employmentStatus: "active", startDate: p.startDate ?? today, updatedAt: new Date() })
       .where(eq(schema.people.id, p.id)).returning();
     await accruePerson(tx, ctx.firm.id, done, today);
+    // H1: probation tracking starts at completion for new permanent and fixed-term staff.
+    if (["permanent", "fixed_term"].includes(done.employmentType)) await createProbation(tx, ctx, done);
+    await tx.insert(schema.employmentEvents).values({ firmId: ctx.firm.id, personId: done.id, kind: "hire", effectiveDate: done.startDate ?? today,
+      summary: `Joined as ${done.jobTitle ?? "employee"}`, createdBy: ctx.person.id });
     await tx.update(schema.onboardingChecklists).set({ completedAt: new Date(), completedBy: ctx.person.id }).where(eq(schema.onboardingChecklists.personId, p.id));
     await enqueue(tx, { firmId: ctx.firm.id, recipientId: p.id, templateKey: "onboarding.complete", channels: ["email"],
       payload: { firm: ctx.firm.displayName }, dedupeKey: `onboarding-complete:${p.id}` });
