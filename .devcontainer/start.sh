@@ -9,7 +9,9 @@ CODE="${DEMO_ACCESS_CODE:-$(cat .devcontainer/.access-code)}"
 # First start seeds the demo (dates relative to today); later starts only register the host.
 DEMO_HOSTS="$HOST,demo.localhost" npx tsx db/seed/run.ts
 pkill -f "next start -p 3000" 2>/dev/null || true
-DEMO_FIRMS=demo DEMO_ACCESS_CODE="$CODE" NODE_ENV=production nohup npx next start -p 3000 > /tmp/portal.log 2>&1 &
+# setsid detaches the server from this script's process group, which Codespaces kills when the start step ends.
+DEMO_FIRMS=demo DEMO_ACCESS_CODE="$CODE" NODE_ENV=production setsid nohup npx next start -p 3000 > /tmp/portal.log 2>&1 < /dev/null &
+disown || true
 gh codespace ports visibility 3000:public -c "${CODESPACE_NAME:-}" >/dev/null 2>&1 || true
 cat <<MSG
 
