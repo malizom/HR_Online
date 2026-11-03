@@ -1,0 +1,15 @@
+// GitHub Codespaces: a free, temporary hosted demo (personal accounts get 60 hours/month on 2 cores).
+// Creating the codespace installs, migrates, seeds the MVR demo and builds; every start runs the portal on port 3000.
+// To share it: Ports tab → right-click 3000 → Port visibility → Public. Stop the codespace after the meeting.
+{
+  "name": "People Portal demo",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
+  "forwardPorts": [3000],
+  "portsAttributes": { "3000": { "label": "People Portal demo", "onAutoForward": "notify" } },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "bash .devcontainer/start.sh",
+  "customizations": { "codespaces": { "openFiles": [".devcontainer/README.md"] } }
+}

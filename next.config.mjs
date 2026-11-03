@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
-  experimental: { serverActions: { bodySizeLimit: "12mb" } },
+  // Inside GitHub Codespaces the port proxy's forwarded host differs from the browser origin; trust only that proxy, and only there.
+  experimental: { serverActions: { bodySizeLimit: "12mb", ...(process.env.CODESPACES === "true" ? { allowedOrigins: ["*.app.github.dev", "localhost:3000"] } : {}) } },
   poweredByHeader: false,
   // Security headers (design doc 08 §4). Sign-in redirects to login.microsoftonline.com are navigations, not fetches,
   // so CSP stays "self". Dev needs 'unsafe-eval' for React refresh only.

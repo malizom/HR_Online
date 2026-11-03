@@ -106,7 +106,7 @@ export default function PeoplePortal() {
           <div className="eyebrow">{firmName.toUpperCase()} / PEOPLE PORTAL</div>
           <div className="title">
             <div>
-              <h1>{page === "Onboarding" ? "A great start begins here." : page === "Home" ? `Good day, ${me?.name.split(" ")[0] ?? ""}.` : page}</h1>
+              <h1>{page === "Onboarding" ? "A great start begins here." : page === "Home" ? (me ? `Good day, ${me.name.split(" ")[0]}.` : "Good day.") : page}</h1>
               <p>{page === "Onboarding" ? `Welcome to ${firmName}. Let’s get you settled in and ready for what’s next.` : SUBTITLE[page] ?? ""}</p>
             </div>
           </div>
