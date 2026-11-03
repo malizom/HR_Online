@@ -53,6 +53,13 @@ export async function provisionFirm(db: Db, input: ProvisionInput) {
       { firmId: f, code: "Banking", label: "Proof of banking details", description: "Bank confirmation or proof of account.", acceptedMime: PDF_IMG, isSensitive: true, sort: 3 },
       { firmId: f, code: "Qualifications", label: "Qualifications & admission", description: "All qualifications, including admission documents.", acceptedMime: PDF_IMG, sort: 4 },
       { firmId: f, code: "MEDCERT", label: "Medical certificate", description: "For sick leave (BCEA s23). HR only.", acceptedMime: PDF_IMG, isSensitive: true, isRequired: false, sort: 9 },
+      // Later releases: contracts (G1), receipts (K1), credential certificates (F1)
+      { firmId: f, code: "CONTRACT", label: "Employment contract", description: "Signed contract of employment.", acceptedMime: PDF_IMG, isSensitive: false, isRequired: false, sort: 10 },
+      { firmId: f, code: "AMENDMENT", label: "Contract amendment", description: "Changes to terms (salary, role, hours).", acceptedMime: PDF_IMG, isSensitive: false, isRequired: false, sort: 11 },
+      { firmId: f, code: "NDA", label: "Confidentiality undertaking", description: "Client confidentiality / NDA.", acceptedMime: PDF_IMG, isSensitive: false, isRequired: false, sort: 12 },
+      { firmId: f, code: "RESTRAINT", label: "Restraint of trade", description: "Signed restraint undertaking.", acceptedMime: PDF_IMG, isSensitive: false, isRequired: false, sort: 13 },
+      { firmId: f, code: "RECEIPT", label: "Expense receipt", description: "Slip or invoice for an expense claim.", acceptedMime: PDF_IMG, isSensitive: false, isRequired: false, sort: 14 },
+      { firmId: f, code: "CERT", label: "Credential certificate", description: "Fidelity Fund, practising certificate, CPD or course certificate.", acceptedMime: PDF_IMG, isSensitive: false, isRequired: false, sort: 15 },
       { firmId: f, code: "LPC", label: "LPC registration", description: "Required for already admitted attorneys.", acceptedMime: PDF_IMG, appliesWhen: "admitted", sort: 5 },
     ]);
     // BCEA-based leave types (B13/B14) and default policies (design doc 04 §2, pending MVR decision D1).

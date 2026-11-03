@@ -45,6 +45,13 @@ const TEMPLATES: Record<string, (p: Record<string, any>) => { subject: string; t
   "onboarding.submitted": p => ({ subject: `${p.person} submitted onboarding for review`, text: `${p.person} has submitted their onboarding details and documents for HR review.\n\n${p.link}` }),
   "onboarding.complete": p => ({ subject: "Welcome — your onboarding is complete", text: `Your onboarding at ${p.firm} is complete. You can now request leave in the People portal.` }),
   "onboarding.invite": p => ({ subject: `Welcome to ${p.firm} — complete your onboarding`, text: `Hi ${p.person},\n\nPlease sign in with your work Microsoft account and complete your onboarding:\n${p.link}\n\nHave ready: your CV, ID, proof of banking and qualifications.` }),
+  // Later releases (R2/R3)
+  "request.submitted": p => ({ subject: `${p.kind} from ${p.requester}`, text: `${p.requester} submitted a ${p.kind}: ${p.title}.\n\nReview it in the People portal.` }),
+  "request.updated": p => ({ subject: `Your ${p.kind} is ${p.state}`, text: `Your ${p.kind} (${p.title}) is now ${p.state} — ${p.by}.${p.comment ? `\n\n${p.comment}` : ""}` }),
+  "review.started": p => ({ subject: `${p.period} has started`, text: `Your ${p.period} has started. Please complete your self-assessment by ${p.due}.` }),
+  "asset.assigned": p => ({ subject: "Equipment issued to you", text: `${p.what} has been issued to you. Please confirm receipt in the People portal.` }),
+  "handover.offboarding": p => ({ subject: `Matter handover from ${p.from}`, text: `${p.from} is leaving the firm and has handed over ${p.matter} to you. Please accept the handover in the People portal.` }),
+  "credential.expiring": p => ({ subject: `${p.what} ${p.lapsed ? "has lapsed" : "expires soon"}: ${p.person}`, text: `${p.person}'s ${p.what} ${p.lapsed ? "lapsed on" : "expires on"} ${p.when}. Upload the renewed certificate in the People portal.` }),
 };
 
 export function render(templateKey: string, payload: Record<string, unknown>) {

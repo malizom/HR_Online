@@ -33,6 +33,28 @@ export type HrData = {
   delegations: { id: string; delegatorId: string; delegateId: string; start: string; end: string }[];
   dashboard: Record<string, any> | null; team: { approvalsWaiting: number; oldestDays: number; teamAwayThisWeek: number; teamSize: number } | null;
   demo?: boolean; settings: any; emergencyContact: { name: string; relationship: string; phone: string } | null;
+  // Later releases (R2/R3)
+  requests: any[]; reviews: any[]; assets: { assets: any[]; mine: any[] }; policies: any[]; announcements: any[]; offboardings: any[];
+  reminders: { text: string; page: string; level: "info" | "warn" | "alert" }[];
+  requestKinds: Record<string, string>; letterTemplates: Record<string, string>; credentialKinds: Record<string, string>;
+};
+
+/** Which release each later feature belongs to (scope register). R1 is the go-live scope; the rest is shown in the demo with a label. */
+export const RELEASE: Record<string, "R2" | "R3"> = {
+  Requests: "R2", Policies: "R2", Performance: "R2", Credentials: "R2", Offboarding: "R2", Roster: "R2",
+  Assets: "R3", "HR cases": "R3", Announcements: "R3",
+};
+export function Rel({ r }: { r?: string }) { return r ? <span className="rel" title={`Planned for release ${r.slice(1)} — shown in the demo`}>{r}</span> : null; }
+
+export const get = async (q: string) => { const r = await fetch(`/api/hr?${q}`); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; };
+export const STATE_LABEL: Record<string, string> = {
+  pending_approval: "Pending", pending_manager: "With manager", pending_hr: "With HR", approved: "Approved", declined: "Declined", cancelled: "Cancelled", paid: "Paid",
+  open: "Open", in_progress: "In progress", completed: "Complete", self_assessment: "Self-assessment", manager_review: "Manager review", employee_ack: "To acknowledge",
+  locked: "Complete", confirmed: "Confirmed", extended: "Extended", terminated: "Ended",
+};
+export const ACTION_LABEL: Record<string, string> = {
+  approve: "Approve", approve_manager: "Approve (manager)", decline: "Decline", cancel: "Withdraw", mark_paid: "Mark paid", start: "Start", complete: "Complete",
+  submit_self: "Submit self-assessment", submit_feedback: "Submit feedback", acknowledge: "Acknowledge", confirm: "Confirm appointment", extend: "Extend probation", terminate: "End employment",
 };
 
 export type Post = (body: FormData | Record<string, unknown>, opts?: { reload?: boolean }) => Promise<any>;
@@ -51,9 +73,9 @@ export const days = (n: number | null | undefined) => (n == null ? "—" : `${Nu
 export const nameOf = (list: { id: string; name: string }[], id?: string | null) => list.find(x => x.id === id)?.name ?? "—";
 
 export function Badge({ s }: { s: string }) {
-  const green = ["Verified", "Approved", "Complete", "Acknowledged", "Handed over", "Accepted", "succeeded"];
-  const red = ["Rejected", "Declined", "Cover declined", "failed", "Certificate needed"];
-  const amber = ["Pending", "Awaiting cover", "In review", "Handover due", "Not acknowledged", "On notice"];
+  const green = ["Verified", "Approved", "Complete", "Acknowledged", "Handed over", "Accepted", "succeeded", "Valid", "Paid", "Confirmed", "Office", "Returned"];
+  const red = ["Rejected", "Declined", "Cover declined", "failed", "Certificate needed", "Lapsed", "Ended"];
+  const amber = ["Pending", "Awaiting cover", "In review", "Handover due", "Not acknowledged", "On notice", "Expiring", "With manager", "With HR", "Self-assessment", "Manager review", "To acknowledge", "Open", "In progress", "Extended", "Away"];
   return <span className={"badge " + (green.includes(s) ? "green" : red.includes(s) ? "red" : amber.includes(s) ? "amber" : "")}>{s}</span>;
 }
 

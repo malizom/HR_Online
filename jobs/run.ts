@@ -10,6 +10,7 @@ import { closeDb, platformDb, schema } from "@/lib/db";
 import type { Firm } from "@/lib/tenancy";
 import { dispatchDue } from "@/modules/notifications";
 import { offboardDue } from "@/modules/admin";
+import { credentialReminders } from "@/modules/hr";
 import { seedDemoIfEmpty } from "@/db/seed/demo-activity";
 import { accrueAll, cycleEndAll, rebuildBalances, todayIn } from "@/modules/leave";
 
@@ -24,6 +25,7 @@ const JOBS: Record<string, Job> = {
   "cycle-end": firm => cycleEndAll(firm.id, today(firm)),
   accrue: firm => accrueAll(firm.id, today(firm)),
   "rebuild-balances": firm => rebuildBalances(firm.id, today(firm)),
+  "credential-reminders": firm => credentialReminders(firm.id, today(firm)),   // F2 (R2): 90/60/30/7-day expiry reminders
   dispatch: firm => dispatchDue(firm),
 };
 

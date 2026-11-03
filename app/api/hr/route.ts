@@ -20,6 +20,7 @@ import { attachCertificate, balancesFor, calendar, confirmHandover, decideLeave,
 import { acknowledge, adminDashboard, auditView, issueParticulars, managerDashboard, myInformation, payrollExport, pendingAcknowledgements, personFile, reports, saveEmergencyContact, setLastWorkingDay, updatePerson } from "@/modules/admin";
 import { addHoliday, applyClosure, changePolicy, createDelegation, listDelegations, previewClosure, revokeDelegation, setRoute, settingsView, updateBranding } from "@/modules/settings";
 import { runImport } from "@/modules/imports";
+import * as hr from "@/modules/hr";
 import { can, navFor } from "@/modules/permissions";
 import { isDemoFirm } from "@/modules/identity/auth";
 import { schema } from "@/lib/db";
@@ -58,6 +59,11 @@ export async function GET(req: Request) {
       case "person": return NextResponse.json(await personFile(ctx, String(q.get("id"))));
       case "reports": return NextResponse.json(await reports(ctx, Number(q.get("year")) || Number(todayIn(ctx.firm.timezone).slice(0, 4))));
       case "audit": return NextResponse.json(await auditView(ctx, Object.fromEntries([...q.entries()].filter(([k, v]) => k !== "view" && v))));
+      case "profile": return NextResponse.json(await hr.profile(ctx, String(q.get("id") || ctx.person.id), { reveal: q.get("reveal") === "1" }));
+      case "credentials": return NextResponse.json(await hr.credentialRegister(ctx));
+      case "roster": return NextResponse.json(await hr.roster(ctx, q.get("week") || undefined));
+      case "cases": return NextResponse.json(await hr.listCases(ctx));
+      case "letter": return NextResponse.json(await hr.getLetter(ctx, String(q.get("id"))));
       case "myinfo": return new NextResponse(JSON.stringify(await myInformation(ctx), null, 2), { headers: {
         "Content-Type": "application/json", "Content-Disposition": `attachment; filename="my-information.json"`, "Cache-Control": "private, no-store" } });
     }
@@ -93,6 +99,10 @@ async function state(ctx: Ctx) {
       calendar(tx, `${today.slice(0, 4)}-01-01`),
       listDepartments(tx), listLeaveTypes(tx), listCategories(tx),
     ]);
+    // Later-release features (labelled R2/R3 in the UI).
+    const [requests, reviews, assets, policies, announcements, reminders, offboardings] = isViewer ? [[], [], { assets: [], mine: [] }, [], [], [], []] as const : await Promise.all([
+      hr.listRequests(tx, ctx), hr.listReviews(tx, ctx), hr.assetRegister(tx, ctx), hr.listPolicies(tx, ctx), hr.listAnnouncements(tx, ctx), hr.reminders(tx, ctx), hr.listOffboardings(tx, ctx),
+    ]);
     const shape = (p: (typeof peopleRows)[number]["p"], dept: string | null) => ({
       id: p.id, owner: p.id, name: displayName(p), email: p.workEmail, role: p.role,
       status: ONBOARDING_LABEL[p.onboardingStatus], admitted: p.isAdmittedAttorney, phone: p.phone ?? "", title: p.jobTitle ?? "",
@@ -106,7 +116,9 @@ async function state(ctx: Ctx) {
       colleagues: isViewer ? [] : allPeople.filter(r => r.p.id !== ctx.person.id && r.p.onboardingStatus === "complete" && r.p.employmentStatus === "active")
         .map(r => ({ id: r.p.id, name: displayName(r.p), department: r.dept ?? "", isFeeEarner: r.p.isFeeEarner, title: r.p.jobTitle ?? "" })),
       documents: docRows.map(({ d, code }) => ({ id: d.id, owner: d.personId, category: code, name: d.fileName, status: DOC_LABEL[d.status], reason: d.rejectionReason ?? "" })),
-      nav: navFor({ ...who, onboardingComplete: ctx.person.onboardingStatus === "complete" }),
+      // Non-admins involved in an offboarding (the leaver, their manager, a colleague receiving a handover) also see it.
+      nav: ((n: string[]) => (offboardings.length && !n.includes("Offboarding") ? [...n.slice(0, n.indexOf("Performance") + 1), "Offboarding", ...n.slice(n.indexOf("Performance") + 1)] : n))(
+        navFor({ ...who, onboardingComplete: ctx.person.onboardingStatus === "complete" })),
       can: { onBehalf: can(who, "leave.request_on_behalf"), payroll: can(who, "payroll.export"), imports: can(who, "imports.run") },
       balances, holidays, acknowledgements: acks, delegations, dashboard, team, settings,
       closures: closures.filter(c => c.appliedAt).map(c => ({ name: c.name, start: c.startDate, end: c.endDate })),
@@ -114,6 +126,8 @@ async function state(ctx: Ctx) {
       leave, calendar: cal, today, departments, leaveTypes,
       categories: categories.filter(c => c.isRequired).map(c => ({ code: c.code, label: c.label, description: c.description ?? "", appliesWhen: c.appliesWhen, required: c.isRequired })),
       demo: isDemoFirm(ctx.firm),
+      requests, reviews, assets, policies, announcements, reminders, offboardings,
+      requestKinds: hr.REQUEST_LABEL, letterTemplates: hr.LETTER_TEMPLATES, credentialKinds: hr.CREDENTIAL_LABEL,
       firm: { name: branding?.brandName ?? ctx.firm.displayName, primary: branding?.primaryColour ?? "#29553d", accent: branding?.accentColour ?? "#6a9872" },
     };
   });
@@ -162,6 +176,25 @@ export async function POST(req: Request) {
       case "add": await addStaff(ctx, body, portalUrl(req)); break;
       case "onboard": await completeOnboarding(ctx, String(body.id)); break;
       case "document": await reviewDocument(ctx, String(body.id), body.status === "Verified" ? "verified" : "rejected", body.reason); break;
+      // Later releases
+      case "hr-contact": await hr.updateContact(ctx, String(body.id), body); break;
+      case "hr-sensitive": await hr.updateSensitive(ctx, String(body.id), body); break;
+      case "hr-history": await hr.addEmploymentEvent(ctx, body); break;
+      case "credential": await hr.addCredential(ctx, body); break;
+      case "credential-verify": await hr.verifyCredential(ctx, String(body.id)); break;
+      case "request": return NextResponse.json(await hr.createRequest(ctx, body));
+      case "request-decision": await hr.decideRequest(ctx, String(body.id), String(body.op), body.comment, body.response); break;
+      case "request-receipt": await hr.attachReceipt(ctx, String(body.id), String(body.documentId)); break;
+      case "review-start": await hr.startReview(ctx, body); break;
+      case "review": await hr.reviewAction(ctx, String(body.id), { ...body, action: body.reviewAction }); break;
+      case "asset": await hr.assetCommand(ctx, body); break;
+      case "case": return NextResponse.json(await hr.caseCommand(ctx, body));
+      case "announcement": await hr.createAnnouncement(ctx, body); break;
+      case "policy-publish": await hr.publishPolicy(ctx, body); break;
+      case "letter": return NextResponse.json(await hr.generateLetter(ctx, body));
+      case "offboarding-start": await hr.startOffboarding(ctx, body); break;
+      case "offboarding": await hr.offboardingCommand(ctx, String(body.id), body); break;
+      case "payroll-changes": return NextResponse.json(await hr.payrollChanges(ctx, body));
       default: throw new UserError("Unknown action.");
     }
     return NextResponse.json({ ok: true });

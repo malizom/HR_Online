@@ -145,15 +145,93 @@ try {
   await hr.waitForSelector("table.grid tbody tr");
   check("audit trail has entries", (await hr.locator("table.grid tbody tr").count()) > 5);
 
+  // ---------------------------------------------------------------- Full profile (D1–D3) and later releases (R2/R3)
+  const api = (page, q) => page.evaluate(async q => { const r = await fetch(`/api/hr?${q}`); return { status: r.status, body: await r.json() }; }, q);
+  const sarahId = (await api(hr, "")).body.people.find(p => p.name === "Sarah Secretary").id;
+  await nav(hr, "People");
+  await hr.locator(".listrow:has-text('Sarah Secretary') button:has-text('Open file')").click();
+  await hr.click('.tabs button:has-text("Personal")');
+  await hr.waitForSelector("text=Identity, tax and banking");
+  check("profile masks the ID number by default", (await hr.locator("dl.kv").last().textContent()).includes("•••") && !(await hr.textContent("main")).includes("8805120123087"));
+  await hr.click('button:has-text("Show full numbers")');
+  await hr.waitForSelector("text=8805120123087");
+  check("HR can reveal the full ID number", true);
+  await hr.click('.tabs button:has-text("Employment")');
+  check("employment history shows the hire", await hr.isVisible("text=Joined as Legal Secretary"));
+  const ivan = await as("ivan.phahle@demo.test");
+  check("staff cannot open a colleague's profile", (await api(ivan, `view=profile&id=${sarahId}`)).status === 403);
+  const robyn = await as("robyn.adams@demo.test");
+  const mgrView = await api(robyn, `view=profile&id=${sarahId}`);
+  check("manager sees the profile but no identity or banking details", mgrView.status === 200 && mgrView.body.sensitive === null && mgrView.body.documents.length === 0);
+
+  // Requests: the manager approves overtime (E3).
+  await nav(robyn, "Requests");
+  await robyn.click('.tabs button:has-text("To action")');
+  const ot = robyn.locator(".listrow:has-text('Overtime'):has-text('Sarah Secretary')");
+  await ot.locator('button:has-text("Approve")').click();
+  await robyn.waitForSelector(".listrow:has-text('Overtime'):has-text('Sarah Secretary') .badge:has-text('Approved')");
+  check("manager approves an overtime request", true);
+
+  // Reviews (H2/H3): manager feedback, then the employee sees the rating.
+  await nav(robyn, "Performance");
+  await robyn.locator("tr:has-text('Ivan Phahle') button:has-text('Open')").click();
+  await robyn.fill("#managerFeedback", "Strong year; ready for arbitration work.");
+  await robyn.selectOption("#rating", "4");
+  await robyn.click('button:has-text("Submit feedback")');
+  await robyn.waitForSelector("tr:has-text('Ivan Phahle') .badge:has-text('To acknowledge')");
+  await ivan.reload(); await ivan.waitForSelector("nav button");
+  await nav(ivan, "Performance");
+  await ivan.locator("tr:has-text('Ivan Phahle') button").first().click();
+  check("employee sees the manager's feedback after submission", await ivan.isVisible("text=ready for arbitration work"));
+
+  // Letters (M2): a completed employment-letter request opens the generated letter.
+  const tumelo = await as("tumelo.mootane@demo.test");
+  await nav(tumelo, "Requests");
+  await tumelo.locator(".listrow:has-text('Employment letter') button:has-text('Letter')").click();
+  await tumelo.waitForSelector(".lettertext");
+  check("generated letter confirms employment", (await tumelo.textContent(".lettertext")).includes("This confirms that Tumelo Mootane is employed"));
+
+  // Offboarding (N2): the receiving colleague accepts a matter handover.
+  const muano = await as("muano.ramurunzi@demo.test");
+  await nav(muano, "Offboarding");
+  await muano.locator(".listrow:has-text('Filing diary') button:has-text('Accept')").click();
+  await muano.waitForSelector(".listrow:has-text('Filing diary') .badge:has-text('Accepted')");
+  check("colleague accepts an offboarding handover", true);
+
+  // Policies (G2/G3): acknowledge the current version.
+  await nav(ivan, "Policies");
+  const read = ivan.locator(".policy:has-text('Social media policy') button:text-is('Read')");
+  if (await read.count()) await read.click();
+  await ivan.waitForSelector('button:has-text("I have read and understood this policy"):not([disabled])');
+  await ivan.click('button:has-text("I have read and understood this policy")');
+  await ivan.waitForSelector(".policy:has-text('Social media policy') .badge:has-text('Acknowledged')");
+  check("staff acknowledge a policy", true);
+
+  // Confidential cases (L1): visible to the named officer only.
+  await nav(hr, "HR cases");
+  check("named officer sees the case", await hr.isVisible("text=grievance"));
+  check("a manager cannot list HR cases", (await api(robyn, "view=cases")).status === 403 && !(await robyn.locator("nav button").allTextContents()).some(n => n.includes("HR cases")));
+
+  // Credentials (F1/F2) and payroll changes (K2).
+  await nav(hr, "Credentials");
+  check("credentials register flags the lapsed FICA training", await hr.isVisible("tr:has-text('Pieter Paralegal') .badge:has-text('Lapsed')"));
+  await nav(hr, "Reports");
+  await hr.click('.card:has-text("Payroll changes") button:has-text("Show")');
+  await hr.waitForSelector(".card:has-text('Payroll changes') table");
+  check("payroll changes include reimbursements", (await hr.textContent(".card:has-text('Payroll changes') table")).includes("Reimbursement"));
+
   // U8 — calendar viewer sees availability only.
   const vw = await as("naledi.reception@demo.test");
   await vw.waitForSelector("text=Approved team leave");
   const navItems = await vw.locator("nav button").allTextContents();
-  check("viewer sees only the team calendar", navItems.length === 1 && navItems[0].includes("Team calendar"), navItems.join(","));
+  check("viewer sees only the team calendar and roster", navItems.length === 2 && navItems[0].includes("Team calendar") && navItems[1].includes("Roster"), navItems.join(","));
   check("viewer sees no leave types or reasons", !(await vw.locator("main").textContent()).includes("Year-end break"));
   await vw.screenshot({ path: "tests/e2e/calendar.png", fullPage: true });
+  await nav(vw, "Roster");
+  await vw.waitForSelector("table.roster");
+  check("reception roster shows court attendance", await vw.isVisible("td.cell:has-text('Court')"));
 } catch (e) {
-  check("run completed without error", false, e.message.split("\n")[0]);
+  check("run completed without error", false, e.message.split("\n").slice(0, 4).join(" | "));
 } finally {
   await browser.close();
   const failed = results.filter(r => !r.ok).length;

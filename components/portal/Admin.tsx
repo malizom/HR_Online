@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Download, FolderCheck, Upload, X } from "lucide-react";
 import { Delegation } from "./Leave";
+import { EmployeeProfile, PayrollChanges } from "./Hr";
 import { Badge, KIND_LABEL, days, download, longDate, nameOf, range, shortDate, type HrData, type Person, type Post } from "./shared";
 
 const get = async (q: string) => { const r = await fetch(`/api/hr?${q}`); const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; };
@@ -20,7 +21,7 @@ function Organogram({ people, open }: { people: Person[]; open: (id: string) => 
   return <>{render(null, 0)}</>;
 }
 
-function PersonPanel({ id, data, post, busy, close }: { id: string; data: HrData; post: Post; busy: boolean; close: () => void }) {
+function PersonPanel({ id, data, post, busy, close, embedded }: { id: string; data: HrData; post: Post; busy: boolean; close: () => void; embedded?: boolean }) {
   const [f, setF] = useState<any>(null);
   const [err, setErr] = useState("");
   const p = data.people.find(x => x.id === id)!;
@@ -28,8 +29,8 @@ function PersonPanel({ id, data, post, busy, close }: { id: string; data: HrData
   useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const act = async (body: Record<string, unknown>) => { if (await post(body)) load(); };
   return (
-    <div className="panel" role="dialog" aria-label={`Person file: ${p?.name}`}>
-      <div className="sectiontitle"><h2>{p?.name}</h2><button aria-label="Close" onClick={close}><X size={16} /></button></div>
+    <div className={embedded ? "hrfile" : "panel"} role={embedded ? undefined : "dialog"} aria-label={`Person file: ${p?.name}`}>
+      {!embedded && <div className="sectiontitle"><h2>{p?.name}</h2><button aria-label="Close" onClick={close}><X size={16} /></button></div>}
       {err && <div className="error">{err}</div>}
       {!f ? <p>Loading…</p> : (<>
         <dl className="kv">
@@ -125,7 +126,11 @@ export function People({ data, post, busy, openAdd }: { data: HrData; post: Post
   const list = data.people.filter(p => p.name.toLowerCase().includes(q.toLowerCase()) && (!dept || p.departmentId === dept));
   return (<>
     <div className="tabs">{["Directory", "Organogram", "Import"].map(t => <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{t}</button>)}<button className="primary" onClick={openAdd}>Add staff member</button></div>
-    {tab === "Directory" && (
+    {open && (<>
+      <div className="inline"><button onClick={() => setOpen(null)}>← Back to people</button></div>
+      <EmployeeProfile id={open} data={data} post={post} busy={busy} hrFile={<PersonPanel id={open} data={data} post={post} busy={busy} close={() => setOpen(null)} embedded />} />
+    </>)}
+    {!open && tab === "Directory" && (
       <div className="card">
         <div className="inline"><input className="search" placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} />
           <select aria-label="Department" value={dept} onChange={e => setDept(e.target.value)}><option value="">All departments</option>{data.departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
@@ -140,9 +145,8 @@ export function People({ data, post, busy, openAdd }: { data: HrData; post: Post
         ))}
       </div>
     )}
-    {tab === "Organogram" && <div className="card"><p className="muted">Leave goes to the person each member reports to. Click a name to open their file.</p><Organogram people={data.people} open={setOpen} /></div>}
-    {tab === "Import" && <Imports post={post} busy={busy} />}
-    {open && <PersonPanel id={open} data={data} post={post} busy={busy} close={() => setOpen(null)} />}
+    {!open && tab === "Organogram" && <div className="card"><p className="muted">Leave goes to the person each member reports to. Click a name to open their file.</p><Organogram people={data.people} open={setOpen} /></div>}
+    {!open && tab === "Import" && <Imports post={post} busy={busy} />}
   </>);
 }
 
@@ -213,6 +217,7 @@ export function Reports({ data, post, busy }: { data: HrData; post: Post; busy: 
         </form>
       </div>
     )}
+    {data.can.payroll && <PayrollChanges post={post} busy={busy} today={data.today} />}
   </>);
 }
 

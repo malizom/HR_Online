@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import {
   ArrowUpRight, BarChart3, CalendarDays, Check, CheckSquare, ChevronRight, Clock, FolderCheck, History, LayoutDashboard,
   Scale, Settings as SettingsIcon, ShieldCheck, Upload, UserRound, UserRoundPlus, Users,
+  Award, BookOpen, Briefcase, ClipboardList, DoorOpen, Laptop, Lock, Megaphone, TrendingUp,
 } from "lucide-react";
-import { Badge, type HrData } from "./portal/shared";
+import { Announcements, Assets, Cases, Credentials, Offboarding, Performance, Policies, Requests, Roster } from "./portal/Hr";
+import { Badge, RELEASE, Rel, type HrData } from "./portal/shared";
 import { Approvals, MyLeave } from "./portal/Leave";
 import { Home, Profile, TeamCalendar } from "./portal/Home";
 import { Audit, DocumentReview, People, Reports, Settings } from "./portal/Admin";
@@ -15,12 +17,18 @@ import { Audit, DocumentReview, People, Reports, Settings } from "./portal/Admin
 const ICONS: Record<string, any> = {
   Home: LayoutDashboard, Onboarding: UserRoundPlus, "My leave": Clock, Approvals: CheckSquare, "Team calendar": CalendarDays,
   "My profile": UserRound, People: Users, "Documents to review": FolderCheck, Reports: BarChart3, Settings: SettingsIcon, Audit: History,
+  Requests: ClipboardList, Roster: Briefcase, Policies: BookOpen, Performance: TrendingUp, Credentials: Award, Assets: Laptop, Offboarding: DoorOpen,
+  "HR cases": Lock, Announcements: Megaphone,
 };
 const SUBTITLE: Record<string, string> = {
   Home: "Your people, at a glance.", "My leave": "Balances, requests and cover — all in one place.", Approvals: "Everything you need to decide, on one card.",
   "Team calendar": "Plan with confidence. See who’s away and what’s coming up.", "My profile": "Your details, emergency contact and documents to acknowledge.",
   People: "Directory, organogram and each person’s file.", "Documents to review": "Verify or return staff documents.", Reports: "Leave, balances, headcount and the payroll export.",
   Settings: "Policies, holidays, closures, approval routes and branding.", Audit: "Who did what, and when.",
+  Requests: "Remote and court days, overtime, expenses, training, letters and HR questions.", Roster: "Who is in the office, remote, at court or away.",
+  Policies: "The firm’s policies — read and acknowledge.", Performance: "Probation, reviews and goals.", Credentials: "Admission, Fidelity Fund, practising certificates, CPD and FICA training.",
+  Assets: "Laptops, phones, cards and keys — who has what.", Offboarding: "Checklists, handovers, exit interviews and certificates.", "HR cases": "Confidential disciplinary and grievance matters.",
+  Announcements: "News for the whole firm or one department.",
 };
 
 export default function PeoplePortal() {
@@ -84,7 +92,7 @@ export default function PeoplePortal() {
         <nav>
           {nav.map(([name, Icon]) => (
             <button key={name} className={page === name ? "active" : ""} onClick={() => { setPage(name); setError(""); }}>
-              <Icon size={18} />{name}{name === "Onboarding" && me?.status !== "Complete" && <span className="dot" />}{name === "Approvals" && approvalsWaiting > 0 && <span className="badge amber">{approvalsWaiting}</span>}
+              <Icon size={18} />{name}<Rel r={RELEASE[name]} />{name === "Onboarding" && me?.status !== "Complete" && <span className="dot" />}{name === "Approvals" && approvalsWaiting > 0 && <span className="badge amber">{approvalsWaiting}</span>}
             </button>
           ))}
         </nav>
@@ -111,7 +119,7 @@ export default function PeoplePortal() {
             </div>
           </div>
 
-          {data?.demo && <div className="warn">Demo environment — names are from the firm’s public team page; every leave record, document and figure is invented. <a href="/api/auth/signout">Switch person</a></div>}
+          {data?.demo && <div className="warn">Demo environment — names are from the firm’s public team page; every leave record, document and figure is invented. Items marked <Rel r="R2" /> or <Rel r="R3" /> are planned for later releases and shown here for discussion. <a href="/api/auth/signout">Switch person</a></div>}
           {error && (
             <div role="alert" className="error">{error}{!data && <a href="/signin"> Sign in</a>}</div>
           )}
@@ -230,6 +238,15 @@ export default function PeoplePortal() {
             {page === "Reports" && <Reports data={data} post={post} busy={busy} />}
             {page === "Settings" && <Settings data={data} post={post} busy={busy} />}
             {page === "Audit" && <Audit data={data} />}
+            {page === "Requests" && <Requests data={data} post={post} busy={busy} />}
+            {page === "Roster" && <Roster data={data} />}
+            {page === "Policies" && <Policies data={data} post={post} busy={busy} />}
+            {page === "Performance" && <Performance data={data} post={post} busy={busy} />}
+            {page === "Credentials" && <Credentials data={data} post={post} busy={busy} />}
+            {page === "Assets" && <Assets data={data} post={post} busy={busy} />}
+            {page === "Offboarding" && <Offboarding data={data} post={post} busy={busy} />}
+            {page === "HR cases" && <Cases data={data} post={post} busy={busy} />}
+            {page === "Announcements" && <Announcements data={data} post={post} busy={busy} />}
           </>) : (
             <div className="card"><h2>Welcome to the people portal</h2><p>{error ? "Sign in with your authorised account to continue." : "Loading your workspace…"}</p></div>
           )}

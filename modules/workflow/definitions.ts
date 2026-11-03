@@ -25,6 +25,53 @@ export const DEFINITIONS: Record<string, Definition> = {
       { from: ["approved"], action: "complete", to: "completed", who: ["admin"] },
     ],
   },
+  /** E1, E3, K1, G4 — one manager decision; expenses then get a paid marker from HR. */
+  hr_approval: {
+    key: "hr_approval", version: 1, initial: "pending_approval", terminal: ["declined", "cancelled", "paid", "approved_final"],
+    transitions: [
+      { from: ["pending_approval"], action: "approve", to: "approved", who: ["assignee", "admin"] },
+      { from: ["pending_approval"], action: "decline", to: "declined", who: ["assignee", "admin"], requiresComment: true },
+      { from: ["pending_approval"], action: "cancel", to: "cancelled", who: ["owner"] },
+      { from: ["approved"], action: "mark_paid", to: "paid", who: ["admin"] },
+    ],
+  },
+  /** I2 — training needs the manager and then HR (cost). */
+  hr_approval_two_step: {
+    key: "hr_approval_two_step", version: 1, initial: "pending_manager", terminal: ["approved", "declined", "cancelled"],
+    transitions: [
+      { from: ["pending_manager"], action: "approve_manager", to: "pending_hr", who: ["assignee"] },
+      { from: ["pending_manager", "pending_hr"], action: "approve", to: "approved", who: ["admin"] },
+      { from: ["pending_manager", "pending_hr"], action: "decline", to: "declined", who: ["assignee", "admin"], requiresComment: true },
+      { from: ["pending_manager", "pending_hr"], action: "cancel", to: "cancelled", who: ["owner"] },
+    ],
+  },
+  /** M1 — staff requests to HR (letters, certificates, UIF forms, queries). */
+  hr_service: {
+    key: "hr_service", version: 1, initial: "open", terminal: ["completed", "cancelled"],
+    transitions: [
+      { from: ["open"], action: "start", to: "in_progress", who: ["admin"] },
+      { from: ["open", "in_progress"], action: "complete", to: "completed", who: ["admin"] },
+      { from: ["open"], action: "cancel", to: "cancelled", who: ["owner"] },
+    ],
+  },
+  /** H1 — probation: the manager (or HR) confirms, extends or ends it; outcome letter generated. */
+  probation: {
+    key: "probation", version: 1, initial: "in_progress", terminal: ["confirmed", "terminated"],
+    transitions: [
+      { from: ["in_progress", "extended"], action: "confirm", to: "confirmed", who: ["assignee", "admin"] },
+      { from: ["in_progress"], action: "extend", to: "extended", who: ["assignee", "admin"], requiresComment: true },
+      { from: ["in_progress", "extended"], action: "terminate", to: "terminated", who: ["admin"], requiresComment: true },
+    ],
+  },
+  /** H2 — review cycle: self-assessment → manager feedback and rating → employee acknowledges → locked. */
+  review: {
+    key: "review", version: 1, initial: "self_assessment", terminal: ["locked"],
+    transitions: [
+      { from: ["self_assessment"], action: "submit_self", to: "manager_review", who: ["owner"] },
+      { from: ["manager_review"], action: "submit_feedback", to: "employee_ack", who: ["assignee", "admin"] },
+      { from: ["employee_ack"], action: "acknowledge", to: "locked", who: ["owner"] },
+    ],
+  },
   onboarding: {
     key: "onboarding",
     version: 1,

@@ -32,7 +32,7 @@ jobs:
       AUTH_TRUST_HOST: "true"
       DEV_LOGIN: "true"
       DEV_FIRM_SLUG: demo
-      DATA_ENCRYPTION_KEY: ZGV2LWtleS1kby1ub3QtdXNlLWluLXByb2R1Y3Rpb24tMzI=
+      DATA_ENCRYPTION_KEY: Y2ktdGVzdC1rZXktbm90LWZvci1wcm9kdWN0aW9uISE=   # 32 bytes; test only
       UPLOAD_DIR: ./uploads
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
@@ -49,7 +49,8 @@ jobs:
       - name: RLS migration is in sync with the schema
         run: |
           npx tsx scripts/gen-rls.mjs ./db/schema/index.ts /tmp/rls.sql
-          diff <(grep -v '^--' /tmp/rls.sql) <(grep -v '^--' db/migrations/0001_rls.sql) || (echo "Run npm run db:rls -- db/migrations/<new>.sql for new tables"; exit 1)
+          # Every tenant table must have its policy in some *_rls.sql migration (order-independent comparison).
+          diff <(grep -v '^--' /tmp/rls.sql | grep -v '^$' | sort) <(cat db/migrations/*_rls.sql | grep -v '^--' | grep -v '^$' | sort) || (echo "Run npm run db:rls for new tables and keep them in the next *_rls.sql migration"; exit 1)
       - name: Migrate + seed
         run: npm run db:migrate && npm run db:seed
       - name: Unit tests (tenancy isolation, guard, routing, workflow)
