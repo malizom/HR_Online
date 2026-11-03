@@ -235,10 +235,9 @@ resource pgExtensions 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@
   properties: { value: 'PGCRYPTO,PG_TRGM', source: 'user-override' }
 }
 // The migration identity is the Entra admin (owns the schema); the app identity is granted pp_app by scripts/migrate.ts.
-resource pgAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
-  parent: pg
-  name: migrateId.properties.principalId
-  properties: { principalName: migrateId.name, principalType: 'ServicePrincipal', tenantId: subscription().tenantId }
+module pgAdmin 'modules/pg-admin.bicep' = {
+  name: 'pg-admin'
+  params: { serverName: pg.name, principalId: migrateId.properties.principalId, principalName: migrateId.name }
   dependsOn: [pgDb, pgExtensions]
 }
 
