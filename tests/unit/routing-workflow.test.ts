@@ -73,7 +73,7 @@ describe("workflow engine", () => {
     expect(allowedActions(inst, manager, "staff", staff)).toEqual(["approve", "decline"]);
     expect(allowedActions(inst, staff, "staff", staff)).toEqual(["cancel"]);
     expect(allowedActions(inst, other, "staff", staff)).toEqual([]);
-    expect(allowedActions(inst, admin, "admin", staff)).toEqual(["approve", "decline"]);
+    expect(allowedActions(inst, admin, "admin", staff)).toEqual(["approve", "decline", "cancel"]);
   });
 
   it("refuses self-approval even by an admin", async () => {
@@ -85,16 +85,28 @@ describe("workflow engine", () => {
   it("records every step and lets only one of two concurrent approvers win", async () => {
     const inst = await start();
     const attempt = (who: string, role: string, action: string) => withFirm(firmId, tx =>
-      transition(tx, { instance: inst, action, actor: actor(who), actorRole: role, ownerId: staff })).then(() => "ok", e => e.message);
+      transition(tx, { instance: inst, action, actor: actor(who), actorRole: role, ownerId: staff, comment: "x" })).then(() => "ok", e => e.message);
     const results = await Promise.all([attempt(manager, "staff", "approve"), attempt(admin, "admin", "decline")]);
     expect(results.filter(r => r === "ok")).toHaveLength(1);
     const steps = await withFirm(firmId, tx => tx.select().from(schema.workflowSteps).where(eq(schema.workflowSteps.instanceId, inst.id)));
     expect(steps.map(s => s.action).sort()).toEqual(results[0] === "ok" ? ["approve", "start"] : ["decline", "start"]);
   });
 
+  it("v2 cover step: colleague accepts, then the approver decides; declining cover needs a reason", async () => {
+    const colleague = other;
+    const inst = await withFirm(firmId, tx => startWorkflow(tx, actor(staff), "leave_request", "leave_request", crypto.randomUUID(), { assigneeId: colleague, initial: "awaiting_cover" }));
+    expect(allowedActions(inst, colleague, "staff", staff)).toEqual(["accept_cover", "decline_cover"]);
+    expect(allowedActions(inst, manager, "staff", staff)).toEqual([]);
+    await expect(withFirm(firmId, tx => transition(tx, { instance: inst, action: "decline_cover", actor: actor(colleague), actorRole: "staff", ownerId: staff })))
+      .rejects.toThrow(/comment is required/);
+    const next = await withFirm(firmId, tx => transition(tx, { instance: inst, action: "accept_cover", actor: actor(colleague), actorRole: "staff", ownerId: staff, nextAssigneeId: manager }));
+    expect(next.state).toBe("pending_approval");
+    expect(allowedActions(next, manager, "staff", staff)).toEqual(["approve", "decline"]);
+  });
+
   it("cannot move a terminal request", async () => {
     const inst = await start();
-    const declined = await withFirm(firmId, tx => transition(tx, { instance: inst, action: "decline", actor: actor(manager), actorRole: "staff", ownerId: staff }));
+    const declined = await withFirm(firmId, tx => transition(tx, { instance: inst, action: "decline", actor: actor(manager), actorRole: "staff", ownerId: staff, comment: "Clashes with trial" }));
     await expect(withFirm(firmId, tx => transition(tx, { instance: declined, action: "approve", actor: actor(manager), actorRole: "staff", ownerId: staff })))
       .rejects.toThrow(/no longer/);
   });

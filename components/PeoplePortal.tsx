@@ -1,114 +1,48 @@
-// MVR Attorneys | People & Leave — portal UI (ported from v1, no ChatGPT dependency)
-// Reconstructed (de-minified, 1:1 behaviour) from page-BAgstXEu.js at
-// https://firm-people-hr-leave.malizo-magangane.chatgpt.site
-// The server route /api/hr (GET data, POST actions, ?file= download) is not
-// retrievable from the browser; its contract is documented in README.md.
+// People portal UI — shell, navigation and onboarding. Screens live in components/portal/* (design doc 06).
+// Visual language ported from v1; navigation comes from the server's permission model (modules/permissions).
 
 "use client";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock,
-  FolderCheck, LayoutDashboard, Plus, Scale, ShieldCheck, Upload,
-  UserRoundPlus, Users,
+  ArrowUpRight, BarChart3, CalendarDays, Check, CheckSquare, ChevronRight, Clock, FolderCheck, History, LayoutDashboard,
+  Scale, Settings as SettingsIcon, ShieldCheck, Upload, UserRound, UserRoundPlus, Users,
 } from "lucide-react";
+import { Badge, type HrData } from "./portal/shared";
+import { Approvals, MyLeave } from "./portal/Leave";
+import { Home, Profile, TeamCalendar } from "./portal/Home";
+import { Audit, DocumentReview, People, Reports, Settings } from "./portal/Admin";
 
-type Role = "admin" | "manager" | "staff" | "viewer";
-type Person = {
-  id: string; owner: string; name: string; email: string; role: Role;
-  status: "Draft" | "In review" | "Complete"; admitted: boolean;
-  phone?: string; title?: string; department?: string; departmentId?: string | null; start?: string; reportsToId?: string | null;
-  isManager?: boolean; directReports?: number;
+const ICONS: Record<string, any> = {
+  Home: LayoutDashboard, Onboarding: UserRoundPlus, "My leave": Clock, Approvals: CheckSquare, "Team calendar": CalendarDays,
+  "My profile": UserRound, People: Users, "Documents to review": FolderCheck, Reports: BarChart3, Settings: SettingsIcon, Audit: History,
 };
-type Doc = { id: string; owner: string; category: string; name: string; status: string };
-type Leave = {
-  id: string; owner: string; name: string; type: string; start: string; end: string;
-  note?: string; status: string; requestNo?: string; actions?: string[];
+const SUBTITLE: Record<string, string> = {
+  Home: "Your people, at a glance.", "My leave": "Balances, requests and cover — all in one place.", Approvals: "Everything you need to decide, on one card.",
+  "Team calendar": "Plan with confidence. See who’s away and what’s coming up.", "My profile": "Your details, emergency contact and documents to acknowledge.",
+  People: "Directory, organogram and each person’s file.", "Documents to review": "Verify or return staff documents.", Reports: "Leave, balances, headcount and the payroll export.",
+  Settings: "Policies, holidays, closures, approval routes and branding.", Audit: "Who did what, and when.",
 };
-type CalEntry = { id: string; name: string; start: string; end: string };
-type Category = { code: string; label: string; description: string; appliesWhen: string; required: boolean };
-type HrData = { me: Person; people: Person[]; documents: Doc[]; leave: Leave[]; calendar: CalEntry[]; today: string;
-  departments: { id: string; name: string }[]; leaveTypes: { id: string; code: string; label: string }[]; categories: Category[]; firm: { name: string } };
-
-const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const iso = (d: Date) => d.toISOString().slice(0, 10);
-const parse = (s: string) => new Date(`${s}T00:00:00Z`);
-
-/* ---------- Team leave calendar (month grid, Monday-first, en-ZA) ---------- */
-function LeaveCalendar({ entries, today }: { entries: CalEntry[]; today: string }) {
-  const id = useId();
-  const t = parse(today);
-  const [view, setView] = useState({ year: t.getUTCFullYear(), month: t.getUTCMonth() });
-  const first = new Date(Date.UTC(view.year, view.month, 1));
-  const offset = (first.getUTCDay() + 6) % 7;
-  const daysInMonth = new Date(Date.UTC(view.year, view.month + 1, 0)).getUTCDate();
-  const weeks = Math.ceil((offset + daysInMonth) / 7);
-  const label = new Intl.DateTimeFormat("en-ZA", { month: "long", year: "numeric", timeZone: "UTC" }).format(first);
-  const shift = (n: number) => {
-    const d = new Date(Date.UTC(view.year, view.month + n, 1));
-    setView({ year: d.getUTCFullYear(), month: d.getUTCMonth() });
-  };
-  return (
-    <section className="mvr-calendar card" aria-labelledby={id}>
-      <div className="mvr-calendar-header">
-        <div><h2 id={id} aria-live="polite">{label}</h2><p>Approved team leave</p></div>
-        <div className="mvr-calendar-controls">
-          <button type="button" aria-label="Previous month" onClick={() => shift(-1)}><ChevronLeft size={17} /></button>
-          <button type="button" onClick={() => setView({ year: t.getUTCFullYear(), month: t.getUTCMonth() })}>Today</button>
-          <button type="button" aria-label="Next month" onClick={() => shift(1)}><ChevronRight size={17} /></button>
-        </div>
-      </div>
-      <div className="mvr-calendar-scroll" tabIndex={0} aria-label="Monthly leave calendar; scroll horizontally on small screens">
-        <table className="mvr-calendar-table" aria-label={`Team leave in ${label}`}>
-          <thead><tr>{DAYS.map(d => <th scope="col" key={d}>{d}</th>)}</tr></thead>
-          <tbody>
-            {Array.from({ length: weeks }, (_, w) => (
-              <tr key={w}>
-                {Array.from({ length: 7 }, (_, d) => {
-                  const date = new Date(Date.UTC(view.year, view.month, w * 7 + d - offset + 1));
-                  const key = iso(date);
-                  const outside = date.getUTCMonth() !== view.month;
-                  const onLeave = entries.filter(e => e.start <= key && e.end >= key).sort((a, b) => a.name.localeCompare(b.name));
-                  return (
-                    <td key={key} className={`${outside ? "mvr-calendar-outside" : ""} ${d > 4 ? "mvr-calendar-weekend" : ""}`}>
-                      <time dateTime={key} aria-current={key === today ? "date" : undefined} className={key === today ? "mvr-calendar-today" : ""}>{date.getUTCDate()}</time>
-                      {onLeave.length > 0 && (
-                        <ul>{onLeave.map(e => <li key={e.id} title={`${e.name} · ${e.start} to ${e.end}`}><span aria-hidden="true" />{e.name}</li>)}</ul>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="mvr-calendar-key"><span aria-hidden="true" /> On leave <small>Dates are inclusive. Personal leave reasons are hidden.</small></div>
-    </section>
-  );
-}
-
-
 
 export default function PeoplePortal() {
   const [data, setData] = useState<HrData | null>(null);
-  const [page, setPage] = useState("Onboarding");
+  const [page, setPage] = useState("Home");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
-  const [filter, setFilter] = useState("All");
-  const [search, setSearch] = useState("");
 
   async function load() {
     const r = await fetch("/api/hr"); const j = await r.json();
     if (!r.ok) { setError(j.error); return; }
     setData(j);
-    if (j.me.role === "viewer") setPage("Team calendar");
+    setPage(p => (j.nav.includes(p) ? p : j.me.status !== "Complete" && j.nav.includes("Onboarding") ? "Onboarding" : j.nav[0]));
   }
   useEffect(() => { load().catch(() => setError("Unable to connect. Please reload.")); }, []);
 
-  async function post(body: FormData | Record<string, unknown>) {
-    setBusy(true); setError("");
+  /** POST an action. `reload: false` = quiet call (previews): returns { error } instead of showing a banner and does not refresh. */
+  async function post(body: FormData | Record<string, unknown>, opts: { reload?: boolean } = {}) {
+    const quiet = opts.reload === false;
+    if (!quiet) { setBusy(true); setError(""); }
     try {
       const r = await fetch("/api/hr", {
         method: "POST",
@@ -116,10 +50,11 @@ export default function PeoplePortal() {
         body: body instanceof FormData ? body : JSON.stringify(body),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error);
-      await load(); return true;
-    } catch (e: any) { setError(e.message); return false; }
-    finally { setBusy(false); }
+      if (!r.ok) { if (quiet) return { error: j.error }; throw new Error(j.error); }
+      if (!quiet) await load();
+      return j.ok === true && Object.keys(j).length === 1 ? true : j;
+    } catch (e: any) { setError(e.message); window.scrollTo({ top: 0, behavior: "smooth" }); return false; }
+    finally { if (!quiet) setBusy(false); }
   }
 
   const me = data?.me;
@@ -131,37 +66,29 @@ export default function PeoplePortal() {
   const categories: [string, string, string][] = (data?.categories ?? []).filter(c => c.appliesWhen !== "admitted" || me?.admitted).map(c => [c.code, c.label, c.description]);
   const required = categories;
   const ready = required.filter(c => myDocs.some(d => d.category === c[0] && d.status !== "Rejected")).length;
-  const cal = data?.calendar || [];
-  const today = data?.today || iso(new Date());
-  const awayNow = cal.filter(e => e.start <= today && e.end >= today);
-  const upcoming = cal.filter(e => e.start > today).sort((a, b) => a.start.localeCompare(b.start));
-
-  const nav: [string, any][] = !me ? [] : isViewer
-    ? [["Team calendar", CalendarDays]]
-    : [["Overview", LayoutDashboard], ["Onboarding", UserRoundPlus], ["Leave requests", Clock], ["Team calendar", CalendarDays],
-       ...(isAdmin ? ([["Staff directory", Users], ["Document review", FolderCheck]] as [string, any][]) : [])];
-
-  const badge = (s: string) => (
-    <span className={"badge " + (["Verified", "Approved", "Complete"].includes(s) ? "green" : ["Rejected", "Declined"].includes(s) ? "red" : "")}>{s}</span>
-  );
+  const nav: [string, any][] = (data?.nav ?? []).map(n => [n, ICONS[n] ?? LayoutDashboard]);
+  const approvalsWaiting = data?.leave.filter(l => l.actions.includes("approve")).length ?? 0;
+  const firmName = data?.firm.name ?? "People portal";
+  const badge = (s: string) => <Badge s={s} />;
   const field = (name: string, label: string, type = "text", def = "", req = false) => (
     <label>{label}<input name={name} type={type} defaultValue={def} required={req} /></label>
   );
 
   return (
     <div className="shell">
+      {data && <style>{`.primary{background:${data.firm.primary};border-color:${data.firm.primary}}.brand{color:${data.firm.primary}}`}</style>}
       {/* ---------- Sidebar ---------- */}
       <aside>
-        <div className="brand"><Scale size={31} /><div>{(data?.firm.name ?? "MVR Attorneys").split(" ")[0].toUpperCase()}<span>{(data?.firm.name ?? "MVR Attorneys").split(" ").slice(1).join(" ").toUpperCase()}</span></div></div>
+        <div className="brand"><Scale size={31} /><div>{firmName.split(" ")[0].toUpperCase()}<span>{firmName.split(" ").slice(1).join(" ").toUpperCase()}</span></div></div>
         <div className="workspace">PEOPLE &amp; CULTURE</div>
         <nav>
           {nav.map(([name, Icon]) => (
             <button key={name} className={page === name ? "active" : ""} onClick={() => { setPage(name); setError(""); }}>
-              <Icon size={18} />{name}{name === "Onboarding" && <span className="dot" />}
+              <Icon size={18} />{name}{name === "Onboarding" && me?.status !== "Complete" && <span className="dot" />}{name === "Approvals" && approvalsWaiting > 0 && <span className="badge amber">{approvalsWaiting}</span>}
             </button>
           ))}
         </nav>
-        <div className="asidebottom"><ShieldCheck size={22} /><b>A place for your people.</b><p>One home for every step of your journey at MVR.</p></div>
+        <div className="asidebottom"><ShieldCheck size={22} /><b>A place for your people.</b><p>One home for every step of your journey at {firmName.split(" ")[0]}.</p></div>
         <div className="account">
           <div className="avatar">{me?.name?.slice(0, 1) || "M"}</div>
           <div><b>{me?.name || "MVR team"}</b><small>{me?.role === "admin" ? "HR administrator" : me?.isManager ? "Manager" : me?.role === "viewer" ? "Calendar viewer" : "Staff"}</small>
@@ -176,17 +103,12 @@ export default function PeoplePortal() {
         </header>
 
         <main>
-          <div className="eyebrow">MVR ATTORNEYS / PEOPLE PORTAL</div>
+          <div className="eyebrow">{firmName.toUpperCase()} / PEOPLE PORTAL</div>
           <div className="title">
             <div>
-              <h1>{page === "Onboarding" ? "A great start begins here." : page === "Overview" ? "Your people, at a glance." : page}</h1>
-              <p>{page === "Onboarding" ? "Welcome to MVR. Let’s get you settled in and ready for what’s next."
-                 : page === "Team calendar" ? "Plan with confidence. See who’s away and what’s coming up."
-                 : "Keep your team connected, organised and ready."}</p>
+              <h1>{page === "Onboarding" ? "A great start begins here." : page === "Home" ? `Good day, ${me?.name.split(" ")[0] ?? ""}.` : page}</h1>
+              <p>{page === "Onboarding" ? `Welcome to ${firmName}. Let’s get you settled in and ready for what’s next.` : SUBTITLE[page] ?? ""}</p>
             </div>
-            {isAdmin && page === "Staff directory" && (
-              <button className="primary" onClick={() => setShowAdd(true)}><Plus size={16} /> Add staff member</button>
-            )}
           </div>
 
           {error && (
@@ -297,121 +219,21 @@ export default function PeoplePortal() {
               </div>
             </>)}
 
-            {/* ---------- OVERVIEW ---------- */}
-            {page === "Overview" && (<>
-              <div className="stats">
-                {([[awayNow.length, "On leave today"], [upcoming.length, "Upcoming leave"], [data.leave.filter(l => l.status === "Pending").length, "Pending requests"], [me.status, "Your onboarding"]] as [any, string][]).map(([v, l]) => (
-                  <div className="card" key={l}><small>{l}</small><h2>{v}</h2></div>
-                ))}
-              </div>
-              <div className="card">
-                <h2>Start with a complete staff file</h2>
-                <p>Complete your onboarding before submitting leave requests.</p>
-                <button className="primary" onClick={() => setPage("Onboarding")}>Continue onboarding <ArrowUpRight size={16} /></button>
-              </div>
-            </>)}
-
-            {/* ---------- TEAM CALENDAR ---------- */}
-            {page === "Team calendar" && (<>
-              <div className="stats">
-                <div className="card"><small>ON LEAVE TODAY</small><h2>{awayNow.length}</h2></div>
-                <div className="card"><small>COMING UP</small><h2>{upcoming.length}</h2></div>
-                <div className="card"><small>VISIBILITY</small><h3>Approved leave only</h3><p>Leave reasons stay private.</p></div>
-              </div>
-              <LeaveCalendar entries={cal} today={today} />
-              <div className="card">
-                <div className="sectiontitle">
-                  <h2>Team availability</h2>
-                  <select aria-label="Filter leave" value={filter} onChange={e => setFilter(e.target.value)}>{["All", "Away now", "Upcoming"].map(o => <option key={o}>{o}</option>)}</select>
-                </div>
-                <input className="search" placeholder="Search a team member…" value={search} onChange={e => setSearch(e.target.value)} />
-                {(filter === "Away now" ? awayNow : filter === "Upcoming" ? upcoming : [...awayNow, ...upcoming])
-                  .filter(e => e.name.toLowerCase().includes(search.toLowerCase()))
-                  .map(e => (
-                    <div className="listrow" key={e.id}>
-                      <div className="avatar">{e.name[0]}</div><b className="grow">{e.name}</b>
-                      <span>{e.start} → {e.end}</span>{badge(e.start <= today ? "Away now" : "Upcoming")}
-                    </div>
-                  ))}
-                {cal.length === 0 && (
-                  <div className="empty"><CalendarDays size={35} /><h3>A clear calendar, for now.</h3><p>Approved leave will appear here for authorised viewers.</p></div>
-                )}
-              </div>
-            </>)}
-
-            {/* ---------- LEAVE REQUESTS ---------- */}
-            {page === "Leave requests" && (<>
-              <div className="card">
-                <div className="sectiontitle"><h2>Request time away</h2>{badge(me.status === "Complete" ? "Onboarding complete" : "Onboarding required")}</div>
-                <form onSubmit={async e => {
-                  e.preventDefault(); const f = e.currentTarget;
-                  if (await post({ action: "leave", ...Object.fromEntries(new FormData(f)) })) f.reset();
-                }}>
-                  <div className="formgrid">
-                    <label>Leave type<select name="type">{data.leaveTypes.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}</select></label>
-                    {field("start", "From", "date", "", true)}
-                    {field("end", "To", "date", "", true)}
-                    {field("note", "Note for your approver")}
-                  </div>
-                  <div className="formfooter">
-                    <span>Requests go to an authorised approver. Self-approval is disabled.</span>
-                    <button disabled={busy || me.status !== "Complete" || isViewer} className="primary">Submit request</button>
-                  </div>
-                </form>
-              </div>
-              <div className="card spaced">
-                <h2>{canApprove ? "Leave approvals & requests" : "Your requests"}</h2>
-                {canApprove && !isAdmin && <p className="muted">You approve leave for the {me.directReports} {me.directReports === 1 ? "person" : "people"} who report to you.</p>}
-                {data.leave.length === 0 && <p className="empty">No leave requests yet.</p>}
-                {data.leave.map(l => (
-                  <div className="listrow" key={l.id}>
-                    <div className="grow"><b>{l.name} · {l.type}</b>{l.requestNo && <small> {l.requestNo}</small>}<p>{l.start} → {l.end}</p>{l.note && <small>{l.note}</small>}</div>
-                    {badge(l.status)}
-                    {l.actions?.includes("approve") && <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Approved" })}>Approve</button>}
-                    {l.actions?.includes("decline") && <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Declined" })}>Decline</button>}
-                    {l.actions?.includes("cancel") && <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Cancelled" })}>Cancel</button>}
-                  </div>
-                ))}
-              </div>
-            </>)}
-
-            {/* ---------- STAFF DIRECTORY (admin) ---------- */}
-            {page === "Staff directory" && isAdmin && (
-              <div className="card">
-                <h2>Your team</h2>
-                <p className="muted">Add staff using their Microsoft 365 email. They can sign in as soon as they are on this list. Leave is approved by the person each staff member reports to.</p>
-                {data.people.map(p => (
-                  <div className="listrow" key={p.id}>
-                    <div className="avatar">{p.name[0]}</div>
-                    <div className="grow"><b>{p.name}</b><p>{p.email} · {p.role}{p.department ? ` · ${p.department}` : ""}</p><small>{p.title || "Awaiting employment details"}{p.reportsToId ? ` · reports to ${data.people.find(x => x.id === p.reportsToId)?.name ?? "—"}` : " · top of organogram"}</small></div>
-                    {badge(p.status)}
-                    {p.status === "In review" && <button disabled={busy} onClick={() => post({ action: "onboard", id: p.id })}>Complete onboarding</button>}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ---------- DOCUMENT REVIEW (admin) ---------- */}
-            {page === "Document review" && isAdmin && (
-              <div className="card">
-                <h2>Staff document review</h2>
-                <p className="muted">Check clarity and completeness before verifying. Rejected documents need to be uploaded again.</p>
-                {docs.length === 0 && <div className="empty"><FolderCheck size={35} /><h3>No documents awaiting review</h3><p>Staff uploads will appear here.</p></div>}
-                {docs.map(d => (
-                  <div className="listrow" key={d.id}>
-                    <div className="grow"><b>{d.category} · {data.people.find(p => p.owner === d.owner)?.name || d.owner}</b><p><a href={"/api/hr?file=" + d.id}>{d.name}</a></p></div>
-                    {badge(d.status)}
-                    <button disabled={busy} onClick={() => post({ action: "document", id: d.id, status: "Verified" })}>Verify</button>
-                    <button disabled={busy} onClick={() => post({ action: "document", id: d.id, status: "Rejected" })}>Reject</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            {page === "Home" && <Home data={data} go={setPage} />}
+            {page === "My leave" && <MyLeave data={data} post={post} busy={busy} />}
+            {page === "Approvals" && <Approvals data={data} post={post} busy={busy} />}
+            {page === "Team calendar" && <TeamCalendar data={data} />}
+            {page === "My profile" && <Profile data={data} post={post} busy={busy} />}
+            {page === "People" && <People data={data} post={post} busy={busy} openAdd={() => setShowAdd(true)} />}
+            {page === "Documents to review" && <DocumentReview data={data} post={post} busy={busy} />}
+            {page === "Reports" && <Reports data={data} post={post} busy={busy} />}
+            {page === "Settings" && <Settings data={data} post={post} busy={busy} />}
+            {page === "Audit" && <Audit data={data} />}
           </>) : (
-            <div className="card"><h2>Welcome to the MVR people portal</h2><p>{error ? "Sign in with your authorised account to continue." : "Loading your workspace…"}</p></div>
+            <div className="card"><h2>Welcome to the people portal</h2><p>{error ? "Sign in with your authorised account to continue." : "Loading your workspace…"}</p></div>
           )}
 
-          <footer>MVR ATTORNEYS <span>People first. Every step of the way.</span></footer>
+          <footer>{firmName.toUpperCase()} <span>People first. Every step of the way.</span></footer>
         </main>
       </section>
 

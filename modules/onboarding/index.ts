@@ -1,4 +1,5 @@
 // Onboarding submit/complete through the workflow engine (doc 02 §4, ADR-07).
+import { accruePerson, todayIn } from "../leave";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { schema, withFirm, type Tx } from "@/lib/db";
 import { UserError } from "@/lib/storage";
@@ -40,7 +41,11 @@ export async function completeOnboarding(ctx: Ctx, personId: string) {
     // An admin completing their OWN onboarding is allowed only when they are the firm's sole admin (bootstrap).
     const ownerId = p.id === ctx.person.id && (await soleAdmin(tx, ctx.person.id)) ? "__bootstrap__" : p.id;
     await transition(tx, { instance: inst, action: "complete", actor: ctx.actor, actorRole: ctx.person.role, ownerId });
-    await tx.update(schema.people).set({ onboardingStatus: "complete", employmentStatus: "active", updatedAt: new Date() }).where(eq(schema.people.id, p.id));
+    // Completion creates balances (doc 05 §3). A missing start date defaults to today so the leave cycle has an anchor.
+    const today = todayIn(ctx.firm.timezone);
+    const [done] = await tx.update(schema.people).set({ onboardingStatus: "complete", employmentStatus: "active", startDate: p.startDate ?? today, updatedAt: new Date() })
+      .where(eq(schema.people.id, p.id)).returning();
+    await accruePerson(tx, ctx.firm.id, done, today);
     await tx.update(schema.onboardingChecklists).set({ completedAt: new Date(), completedBy: ctx.person.id }).where(eq(schema.onboardingChecklists.personId, p.id));
     await enqueue(tx, { firmId: ctx.firm.id, recipientId: p.id, templateKey: "onboarding.complete", channels: ["email"],
       payload: { firm: ctx.firm.displayName }, dedupeKey: `onboarding-complete:${p.id}` });
