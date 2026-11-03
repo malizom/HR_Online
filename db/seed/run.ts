@@ -8,6 +8,8 @@
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../schema";
 import { ownerDb, provisionFirm, seedNationalHolidays } from "./provision";
+import { seedDemoActivity } from "./demo-activity";
+import { closeDb } from "@/lib/db";
 
 const arg = (k: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : undefined; };
 
@@ -31,7 +33,7 @@ async function main() {
       return;
     }
     await seedDemo(db);
-  } finally { await end(); }
+  } finally { await end(); await closeDb(); }
 }
 
 /** Demo tenant: a small firm with a real organogram, used by CI e2e, UAT rehearsal and sales demos. */
@@ -45,8 +47,9 @@ async function seedDemo(db: ReturnType<typeof ownerDb>["db"]) {
   await db.transaction(async tx => {
     await tx.execute(sql`select set_config('app.firm_id', ${firm.id}, true)`);
     const depts = Object.fromEntries((await tx.select().from(schema.departments)).map(d => [d.name, d.id]));
+    let no = 1;
     const add = async (first: string, last: string, title: string, dept: string, reportsTo: string | null, extra: Partial<typeof schema.people.$inferInsert> = {}) => {
-      const [p] = await tx.insert(schema.people).values({
+      const [p] = await tx.insert(schema.people).values({ employeeNo: `DEMO${String(++no).padStart(4, "0")}`, phone: "+27 11 555 01" + String(no).padStart(2, "0"),
         firmId: firm.id, firstName: first, lastName: last, workEmail: `${first}.${last}@demo.test`.toLowerCase(), jobTitle: title,
         departmentId: depts[dept], reportsToId: reportsTo, startDate: "2024-02-01", onboardingStatus: "complete", employmentStatus: "active", ...extra,
       }).returning();
@@ -57,15 +60,17 @@ async function seedDemo(db: ReturnType<typeof ownerDb>["db"]) {
     const lit = await add("Lindiwe", "Litigator", "Director: Litigation", "Litigation", md, { role: "manager", isFeeEarner: true, isAdmittedAttorney: true });
     const conv = await add("Johan", "Conveyancer", "Director: Conveyancing", "Conveyancing", md, { role: "manager", isFeeEarner: true, isAdmittedAttorney: true });
     await add("Ayanda", "Associate", "Associate", "Litigation", lit, { isFeeEarner: true, isAdmittedAttorney: true });
-    await add("Kagiso", "Candidate", "Candidate Attorney", "Litigation", lit, { isFeeEarner: true, employmentType: "candidate_attorney" });
+    await add("Kagiso", "Candidate", "Candidate Attorney", "Litigation", lit, { isFeeEarner: true, employmentType: "candidate_attorney", startDate: "2026-02-02" });
     await add("Sarah", "Secretary", "Legal Secretary", "Litigation", lit);
-    await add("Pieter", "Paralegal", "Paralegal", "Conveyancing", conv, { isFeeEarner: true });
+    await add("Pieter", "Paralegal", "Paralegal", "Conveyancing", conv, { isFeeEarner: true, workPattern: [1, 2, 3, 4], employmentType: "part_time" });
     await add("Naledi", "Reception", "Receptionist", "Administration", adminId, { role: "viewer" });
     await add("Thabo", "Newstarter", "Associate", "Commercial", md, { isFeeEarner: true, onboardingStatus: "invited", employmentStatus: "pre_start", startDate: null });
     // The admin reports to the managing director; MD (top of tree) is approved via an explicit route to the admin.
-    await tx.update(schema.people).set({ reportsToId: md, departmentId: depts["Administration"] }).where(eq(schema.people.id, adminId));
+    await tx.update(schema.people).set({ reportsToId: md, departmentId: depts["Administration"], employeeNo: "DEMO0001", startDate: "2023-03-01",
+      onboardingStatus: "complete", employmentStatus: "active" }).where(eq(schema.people.id, adminId));
     await tx.insert(schema.approvalRoutes).values({ firmId: firm.id, subjectType: "leave", scope: "person", scopeValue: md, approverKind: "person", approverValue: adminId });
   });
+  await seedDemoActivity(firm.id);
   console.log(`demo firm seeded (${firm.id}) — sign in at http://demo.localhost:3000 as hr@demo.test`);
 }
 

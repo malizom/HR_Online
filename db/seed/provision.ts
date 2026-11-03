@@ -52,20 +52,34 @@ export async function provisionFirm(db: Db, input: ProvisionInput) {
       { firmId: f, code: "ID", label: "Identity document", description: "A clear, legible copy of your ID.", acceptedMime: PDF_IMG, isSensitive: true, sort: 2 },
       { firmId: f, code: "Banking", label: "Proof of banking details", description: "Bank confirmation or proof of account.", acceptedMime: PDF_IMG, isSensitive: true, sort: 3 },
       { firmId: f, code: "Qualifications", label: "Qualifications & admission", description: "All qualifications, including admission documents.", acceptedMime: PDF_IMG, sort: 4 },
+      { firmId: f, code: "MEDCERT", label: "Medical certificate", description: "For sick leave (BCEA s23). HR only.", acceptedMime: PDF_IMG, isSensitive: true, isRequired: false, sort: 9 },
       { firmId: f, code: "LPC", label: "LPC registration", description: "Required for already admitted attorneys.", acceptedMime: PDF_IMG, appliesWhen: "admitted", sort: 5 },
     ]);
-    // BCEA-based leave types (B13/B14). Policies with entitlements are seeded in S1 from design doc 04.
-    await tx.insert(schema.leaveTypes).values([
+    // BCEA-based leave types (B13/B14) and default policies (design doc 04 §2, pending MVR decision D1).
+    const types = await tx.insert(schema.leaveTypes).values([
       { firmId: f, code: "annual", label: "Annual", category: "annual", sort: 1 },
-      { firmId: f, code: "sick", label: "Sick", category: "sick", requiresCover: true, reasonVisibleTo: "hr_only", sort: 2 },
-      { firmId: f, code: "family", label: "Family responsibility", category: "family_responsibility", reasonVisibleTo: "hr_only", sort: 3 },
+      // Sick and family responsibility leave are unplanned: the manager arranges cover, so no colleague acceptance step.
+      { firmId: f, code: "sick", label: "Sick", category: "sick", requiresCover: false, reasonVisibleTo: "hr_only", sort: 2 },
+      { firmId: f, code: "family", label: "Family responsibility", category: "family_responsibility", requiresCover: false, reasonVisibleTo: "hr_only", sort: 3 },
       // One parental type for birth, adoption and surrogacy: Van Wyk v Minister of Employment and Labour [2025] ZACC 20
       // (interim regime from 3 Oct 2025: 4 months + 10 days shared between employed parents). Design doc 04 §6.
       { firmId: f, code: "parental", label: "Parental (birth, adoption, surrogacy)", category: "parental", isPaid: false, allowsHalfDay: false, requiresCover: true, sort: 4 },
       { firmId: f, code: "study", label: "Study / exam", category: "study", sort: 5 },
       { firmId: f, code: "unpaid", label: "Unpaid", category: "unpaid", isPaid: false, sort: 6 },
       { firmId: f, code: "other", label: "Other", category: "special", sort: 7 },
-    ]);
+    ]).returning();
+    const typeId = (code: string) => types.find(t => t.code === code)!.id;
+    const policies = await tx.insert(schema.leavePolicies).values([
+      { firmId: f, leaveTypeId: typeId("annual"), name: "Annual leave", effectiveFrom: "2020-01-01", entitlement: 15, cycleKind: "annual", cycleAnchor: "start_date",
+        accrualMethod: "monthly", carryOverCap: 5, carryOverExpiryMonths: 6, minNoticeDays: 5, maxAdvanceDays: 365 },
+      { firmId: f, leaveTypeId: typeId("sick"), name: "Sick leave (BCEA s22)", effectiveFrom: "2020-01-01", entitlement: 30, cycleKind: "three_year", cycleAnchor: "start_date",
+        accrualMethod: "upfront", firstMonthsRule: { months: 6, perDaysWorked: 26 }, certificateAfterDays: 2, certificateOccasionsRule: { occasions: 2, weeks: 8 } },
+      { firmId: f, leaveTypeId: typeId("family"), name: "Family responsibility (BCEA s27)", effectiveFrom: "2020-01-01", entitlement: 3, cycleKind: "annual", cycleAnchor: "start_date",
+        accrualMethod: "upfront", minServiceMonths: 4, minDaysPerWeek: 4 },
+      { firmId: f, leaveTypeId: typeId("study"), name: "Study / exam leave", effectiveFrom: "2020-01-01", entitlement: 5, cycleKind: "annual", cycleAnchor: "start_date",
+        accrualMethod: "upfront", minNoticeDays: 10 },
+    ]).returning();
+    await tx.insert(schema.policyAssignments).values(policies.map(p => ({ firmId: f, policyId: p.id, appliesTo: "all" as const })));
     await tx.insert(schema.inductionTemplates).values([
       { firmId: f, label: "Firm orientation with HR", owner: "hr", sort: 1 },
       { firmId: f, label: "Laptop, email and practice-management access set up", owner: "hr", sort: 2 },

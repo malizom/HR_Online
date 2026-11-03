@@ -1,4 +1,5 @@
 // Staff documents: upload, HR review, download (doc 02 §4). Downloads and S-class reads are access-logged.
+import { enqueue } from "../notifications";
 import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { schema, withFirm, type Tx } from "@/lib/db";
 import { getBytes, putDocument, UserError } from "@/lib/storage";
@@ -35,9 +36,12 @@ export async function reviewDocument(ctx: Ctx, documentId: string, status: "veri
     const [d] = await tx.select().from(schema.documents).where(eq(schema.documents.id, documentId));
     if (!d) throw new UserError("Document not found.", 404);
     if (d.status === "superseded") throw new UserError("This document has been replaced by a newer upload.");
+    if (status === "rejected" && !reason?.trim()) throw new UserError("Give a reason so the person knows what to fix.");
     await tx.update(schema.documents).set({ status, reviewedBy: ctx.person.id, reviewedAt: new Date(), rejectionReason: status === "rejected" ? (reason ?? null) : null, updatedAt: new Date() })
       .where(eq(schema.documents.id, d.id));
     await audit(tx, ctx.actor, `document.${status}`, "document", d.id);
+    if (status === "rejected") await enqueue(tx, { firmId: ctx.firm.id, recipientId: d.personId, templateKey: "document.rejected",
+      payload: { file: d.fileName, reason }, dedupeKey: `doc-rejected:${d.id}` });
   });
 }
 

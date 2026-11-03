@@ -3,16 +3,25 @@
  * daily at 02:00 SAST and on demand. Each job is idempotent and recorded in job_runs per firm.
  *   npm run jobs                 -> all jobs for all active firms
  *   npm run jobs -- dispatch     -> one job
- * S1 adds: accrue, carry-over, rebuild-balances (consistency check); R2: retention, sage-export.
+ * cycle-end (carry-over, forfeiture proposals), accrue, rebuild-balances, dispatch. R2: retention, sage-export.
  */
 import { eq } from "drizzle-orm";
 import { closeDb, platformDb, schema } from "@/lib/db";
 import type { Firm } from "@/lib/tenancy";
 import { dispatchDue } from "@/modules/notifications";
+import { offboardDue } from "@/modules/admin";
+import { accrueAll, cycleEndAll, rebuildBalances, todayIn } from "@/modules/leave";
 
 type Job = (firm: Firm) => Promise<Record<string, unknown>>;
 
+/** JOB_TODAY=YYYY-MM-DD runs the jobs "as at" a date (rehearsals, back-fills). Order matters: carry-over before accrual. */
+const today = (firm: Firm) => process.env.JOB_TODAY ?? todayIn(firm.timezone);
+
 const JOBS: Record<string, Job> = {
+  offboard: firm => offboardDue(firm.id, today(firm)),
+  "cycle-end": firm => cycleEndAll(firm.id, today(firm)),
+  accrue: firm => accrueAll(firm.id, today(firm)),
+  "rebuild-balances": firm => rebuildBalances(firm.id, today(firm)),
   dispatch: firm => dispatchDue(firm),
 };
 
