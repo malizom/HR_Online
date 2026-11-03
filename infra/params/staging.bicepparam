@@ -11,3 +11,7 @@ param webMinReplicas = 0
 param storageSku = 'Standard_LRS'
 param logRetentionDays = 30
 param lockDownData = false
+
+// Hosted demo for prospects (MVR first): persona sign-in behind an access code, demo data seeded on first deploy.
+param demoFirms = 'demo'
+param demoHosts = 'demo.people.mvulatelecoms.com'

@@ -14,6 +14,10 @@ import { getSecret } from "@/lib/secrets";
 import { hashIdentifier } from "@/lib/crypto";
 
 const devLoginEnabled = () => process.env.DEV_LOGIN === "true" && process.env.NODE_ENV !== "production";
+/** Hosted demo tenants (env DEMO_FIRMS=demo). Persona sign-in works only there, and only for fictional @demo.test people. */
+const isDemoFirm = (firm: Pick<Firm, "slug"> | null) =>
+  !!firm && (process.env.DEMO_FIRMS ?? "").split(",").map(s => s.trim()).filter(Boolean).includes(firm.slug);
+const DEMO_EMAIL = /@demo\.test$/i;
 
 async function hostOf(req?: Request): Promise<string> {
   if (req) return req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
@@ -58,6 +62,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async (req): Promise
     }));
   }
 
+  if (isDemoFirm(firm)) {
+    providers.push(Credentials({
+      id: "demo", name: "Demo persona", credentials: { email: { label: "Email", type: "email" }, code: { label: "Access code", type: "password" } },
+      async authorize(creds) {
+        const email = String(creds?.email || "");
+        if (!firm || !DEMO_EMAIL.test(email)) return null;
+        // A hosted demo shows real names (public team page), so it sits behind an access code shared with the prospect.
+        const code = process.env.DEMO_ACCESS_CODE;
+        if (code && String(creds?.code ?? "").trim() !== code) return null;
+        const p = await findActivePerson(firm, email);
+        return p ? { id: p.id, email: p.workEmail, name: `${p.firstName} ${p.lastName}` } : null;
+      },
+    }));
+  }
+
   const idleMinutes = 30;
   return {
     providers,
@@ -70,6 +89,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async (req): Promise
         if (!firm || !email) { await recordSignIn(firm, email ?? null, null, "no_firm", req); return false; }
         const person = await findActivePerson(firm, email);
         if (!person) { await recordSignIn(firm, email, null, "not_on_staff_list", req); return false; }
+        if (account?.provider === "demo" && !isDemoFirm(firm)) { await recordSignIn(firm, email, person.id, "demo_refused", req); return false; }
         // Bind the Entra object id on first sign-in; refuse a different identity using the same email later.
         const oid = account?.provider === "microsoft-entra-id" ? String((profile as any)?.oid ?? "") : "";
         if (oid) {
@@ -96,4 +116,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async (req): Promise
 });
 
 export const hasEntra = async (firm: Firm | null) => !!(firm?.entraTenantId && firm.entraClientId && firm.entraSecretRef);
-export { devLoginEnabled };
+export { devLoginEnabled, isDemoFirm };
+
+/** Personas offered on the demo sign-in page. */
+export async function demoPersonas(firm: Firm) {
+  if (!isDemoFirm(firm)) return [];
+  return withFirm(firm.id, async tx => (await tx.select().from(schema.people).where(and(eq(schema.people.status, "active"), isNull(schema.people.deactivatedAt))))
+    .filter(p => DEMO_EMAIL.test(p.workEmail) && p.onboardingStatus === "complete")
+    .map(p => ({ email: p.workEmail, name: `${p.firstName} ${p.lastName}`, title: p.jobTitle ?? "", role: p.role })));
+}

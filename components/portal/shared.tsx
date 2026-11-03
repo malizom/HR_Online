@@ -32,7 +32,7 @@ export type HrData = {
   acknowledgements: { id: string; title: string; issuedAt: string; acknowledgedAt: string | null; text: string }[];
   delegations: { id: string; delegatorId: string; delegateId: string; start: string; end: string }[];
   dashboard: Record<string, any> | null; team: { approvalsWaiting: number; oldestDays: number; teamAwayThisWeek: number; teamSize: number } | null;
-  settings: any; emergencyContact: { name: string; relationship: string; phone: string } | null;
+  demo?: boolean; settings: any; emergencyContact: { name: string; relationship: string; phone: string } | null;
 };
 
 export type Post = (body: FormData | Record<string, unknown>, opts?: { reload?: boolean }) => Promise<any>;
