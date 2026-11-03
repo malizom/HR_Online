@@ -3,3 +3,6 @@ node_modules
 .env
 uploads/*
 !uploads/.gitkeep
+tests/e2e/*.png
+.env.local
+*.tsbuildinfo

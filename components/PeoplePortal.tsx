@@ -12,19 +12,22 @@ import {
   UserRoundPlus, Users,
 } from "lucide-react";
 
-type Role = "admin" | "approver" | "staff" | "viewer";
+type Role = "admin" | "manager" | "staff" | "viewer";
 type Person = {
   id: string; owner: string; name: string; email: string; role: Role;
   status: "Draft" | "In review" | "Complete"; admitted: boolean;
-  phone?: string; title?: string; department?: string; start?: string;
+  phone?: string; title?: string; department?: string; departmentId?: string | null; start?: string; reportsToId?: string | null;
+  isManager?: boolean; directReports?: number;
 };
-type Doc = { id: string; owner: string; category: string; name: string; status: "Pending" | "Verified" | "Rejected" };
+type Doc = { id: string; owner: string; category: string; name: string; status: string };
 type Leave = {
   id: string; owner: string; name: string; type: string; start: string; end: string;
-  note?: string; status: "Pending" | "Approved" | "Declined" | "Cancelled";
+  note?: string; status: string; requestNo?: string; actions?: string[];
 };
 type CalEntry = { id: string; name: string; start: string; end: string };
-type HrData = { me: Person; people: Person[]; documents: Doc[]; leave: Leave[]; calendar: CalEntry[]; today: string };
+type Category = { code: string; label: string; description: string; appliesWhen: string; required: boolean };
+type HrData = { me: Person; people: Person[]; documents: Doc[]; leave: Leave[]; calendar: CalEntry[]; today: string;
+  departments: { id: string; name: string }[]; leaveTypes: { id: string; code: string; label: string }[]; categories: Category[]; firm: { name: string } };
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -84,17 +87,7 @@ function LeaveCalendar({ entries, today }: { entries: CalEntry[]; today: string 
   );
 }
 
-/* ---------- Required document categories ---------- */
-const DOC_CATEGORIES: [string, string, string][] = [
-  ["CV", "Full personal CV", "Your complete professional history."],
-  ["ID", "Identity document", "A clear, legible copy of your ID."],
-  ["Banking", "Proof of banking details", "Bank confirmation or proof of account."],
-  ["Qualifications", "Qualifications & admission", "All qualifications, including admission documents."],
-  ["LPC", "LPC registration", "Required for already admitted attorneys."],
-];
 
-const DEPARTMENTS = ["Legal", "Litigation", "Conveyancing", "Commercial", "Finance", "Administration", "Support"];
-const LEAVE_TYPES = ["Annual", "Sick", "Family responsibility", "Unpaid", "Other"];
 
 export default function PeoplePortal() {
   const [data, setData] = useState<HrData | null>(null);
@@ -131,18 +124,19 @@ export default function PeoplePortal() {
 
   const me = data?.me;
   const isAdmin = me?.role === "admin";
-  const canApprove = isAdmin || me?.role === "approver";
+  const canApprove = isAdmin || !!me?.isManager;
   const isViewer = me?.role === "viewer";
   const docs = data?.documents || [];
   const myDocs = docs.filter(d => d.owner === me?.id);
-  const required = DOC_CATEGORIES.filter(c => c[0] !== "LPC" || me?.admitted);
+  const categories: [string, string, string][] = (data?.categories ?? []).filter(c => c.appliesWhen !== "admitted" || me?.admitted).map(c => [c.code, c.label, c.description]);
+  const required = categories;
   const ready = required.filter(c => myDocs.some(d => d.category === c[0] && d.status !== "Rejected")).length;
   const cal = data?.calendar || [];
   const today = data?.today || iso(new Date());
   const awayNow = cal.filter(e => e.start <= today && e.end >= today);
   const upcoming = cal.filter(e => e.start > today).sort((a, b) => a.start.localeCompare(b.start));
 
-  const nav: [string, any][] = isViewer
+  const nav: [string, any][] = !me ? [] : isViewer
     ? [["Team calendar", CalendarDays]]
     : [["Overview", LayoutDashboard], ["Onboarding", UserRoundPlus], ["Leave requests", Clock], ["Team calendar", CalendarDays],
        ...(isAdmin ? ([["Staff directory", Users], ["Document review", FolderCheck]] as [string, any][]) : [])];
@@ -158,7 +152,7 @@ export default function PeoplePortal() {
     <div className="shell">
       {/* ---------- Sidebar ---------- */}
       <aside>
-        <div className="brand"><Scale size={31} /><div>MVR<span>ATTORNEYS</span></div></div>
+        <div className="brand"><Scale size={31} /><div>{(data?.firm.name ?? "MVR Attorneys").split(" ")[0].toUpperCase()}<span>{(data?.firm.name ?? "MVR Attorneys").split(" ").slice(1).join(" ").toUpperCase()}</span></div></div>
         <div className="workspace">PEOPLE &amp; CULTURE</div>
         <nav>
           {nav.map(([name, Icon]) => (
@@ -170,7 +164,7 @@ export default function PeoplePortal() {
         <div className="asidebottom"><ShieldCheck size={22} /><b>A place for your people.</b><p>One home for every step of your journey at MVR.</p></div>
         <div className="account">
           <div className="avatar">{me?.name?.slice(0, 1) || "M"}</div>
-          <div><b>{me?.name || "MVR team"}</b><small>{me?.role === "admin" ? "HR administrator" : me?.role || "Staff portal"}</small>
+          <div><b>{me?.name || "MVR team"}</b><small>{me?.role === "admin" ? "HR administrator" : me?.isManager ? "Manager" : me?.role === "viewer" ? "Calendar viewer" : "Staff"}</small>
             <small><a href="/api/auth/signout">Sign out</a></small></div>
         </div>
       </aside>
@@ -237,7 +231,7 @@ export default function PeoplePortal() {
                         {field("phone", "Contact number", "tel", me.phone)}
                         {field("title", "Job title", "text", me.title, true)}
                         <label>Department
-                          <select name="department" defaultValue={me.department || "Legal"}>{DEPARTMENTS.map(d => <option key={d}>{d}</option>)}</select>
+                          <select name="department" defaultValue={me.department || data.departments[0]?.name}>{data.departments.map(d => <option key={d.id}>{d.name}</option>)}</select>
                         </label>
                         {field("start", "Employment start date", "date", me.start, true)}
                         <label>Email address<input value={me.email} disabled readOnly /></label>
@@ -288,7 +282,7 @@ export default function PeoplePortal() {
                   <div className="card">
                     <div className="miniicon"><ShieldCheck size={22} /></div>
                     <h3>Your onboarding checklist</h3>
-                    {["Personal & employment details", "Full personal CV", "Clear copy of ID", "Proof of banking details", "Qualifications & admission", ...(me.admitted ? ["LPC registration"] : [])].map((item, i) => (
+                    {["Personal & employment details", ...required.map(c => c[1])].map((item, i) => (
                       <div className="checklist" key={item}>
                         <span className={i === 0 ? (me.title ? "done" : "") : (myDocs.some(d => d.category === required[i - 1]?.[0] && d.status !== "Rejected") ? "done" : "")}><Check size={12} /></span>{item}
                       </div>
@@ -296,7 +290,7 @@ export default function PeoplePortal() {
                   </div>
                   <div className="note">
                     <b>A note on your documents</b>
-                    <p>All staff submit the core documents. Already admitted attorneys also submit their LPC registration.</p>
+                    <p>All staff submit the core documents{data.categories.some(c => c.appliesWhen === "admitted") ? ". Already admitted attorneys also submit their LPC registration." : "."}</p>
                     <small>Only you and HR can access your staff documents.</small>
                   </div>
                 </section>
@@ -354,7 +348,7 @@ export default function PeoplePortal() {
                   if (await post({ action: "leave", ...Object.fromEntries(new FormData(f)) })) f.reset();
                 }}>
                   <div className="formgrid">
-                    <label>Leave type<select name="type">{LEAVE_TYPES.map(t => <option key={t}>{t}</option>)}</select></label>
+                    <label>Leave type<select name="type">{data.leaveTypes.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}</select></label>
                     {field("start", "From", "date", "", true)}
                     {field("end", "To", "date", "", true)}
                     {field("note", "Note for your approver")}
@@ -367,18 +361,15 @@ export default function PeoplePortal() {
               </div>
               <div className="card spaced">
                 <h2>{canApprove ? "Leave approvals & requests" : "Your requests"}</h2>
+                {canApprove && !isAdmin && <p className="muted">You approve leave for the {me.directReports} {me.directReports === 1 ? "person" : "people"} who report to you.</p>}
                 {data.leave.length === 0 && <p className="empty">No leave requests yet.</p>}
                 {data.leave.map(l => (
                   <div className="listrow" key={l.id}>
-                    <div className="grow"><b>{l.name} · {l.type}</b><p>{l.start} → {l.end}</p>{l.note && <small>{l.note}</small>}</div>
+                    <div className="grow"><b>{l.name} · {l.type}</b>{l.requestNo && <small> {l.requestNo}</small>}<p>{l.start} → {l.end}</p>{l.note && <small>{l.note}</small>}</div>
                     {badge(l.status)}
-                    {l.status === "Pending" && canApprove && l.owner !== me.id && (<>
-                      <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Approved" })}>Approve</button>
-                      <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Declined" })}>Decline</button>
-                    </>)}
-                    {l.owner === me.id && ["Pending", "Approved"].includes(l.status) && (
-                      <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Cancelled" })}>Cancel</button>
-                    )}
+                    {l.actions?.includes("approve") && <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Approved" })}>Approve</button>}
+                    {l.actions?.includes("decline") && <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Declined" })}>Decline</button>}
+                    {l.actions?.includes("cancel") && <button disabled={busy} onClick={() => post({ action: "decision", id: l.id, status: "Cancelled" })}>Cancel</button>}
                   </div>
                 ))}
               </div>
@@ -388,11 +379,11 @@ export default function PeoplePortal() {
             {page === "Staff directory" && isAdmin && (
               <div className="card">
                 <h2>Your team</h2>
-                <p className="muted">Add staff using the email they use to sign in. Site access must also be granted before they can enter.</p>
+                <p className="muted">Add staff using their Microsoft 365 email. They can sign in as soon as they are on this list. Leave is approved by the person each staff member reports to.</p>
                 {data.people.map(p => (
                   <div className="listrow" key={p.id}>
                     <div className="avatar">{p.name[0]}</div>
-                    <div className="grow"><b>{p.name}</b><p>{p.email} · {p.role}</p><small>{p.title || "Awaiting employment details"}</small></div>
+                    <div className="grow"><b>{p.name}</b><p>{p.email} · {p.role}{p.department ? ` · ${p.department}` : ""}</p><small>{p.title || "Awaiting employment details"}{p.reportsToId ? ` · reports to ${data.people.find(x => x.id === p.reportsToId)?.name ?? "—"}` : " · top of organogram"}</small></div>
                     {badge(p.status)}
                     {p.status === "In review" && <button disabled={busy} onClick={() => post({ action: "onboard", id: p.id })}>Complete onboarding</button>}
                   </div>
@@ -429,21 +420,34 @@ export default function PeoplePortal() {
         <div className="overlay">
           <div className="card modal">
             <h2>Add a staff member</h2>
-            <p>Create their onboarding profile. No invitation email is sent.</p>
+            <p>Creates their onboarding profile and emails them an invitation to sign in.</p>
             <form onSubmit={async e => {
               e.preventDefault();
               if (await post({ action: "add", ...Object.fromEntries(new FormData(e.currentTarget)) })) setShowAdd(false);
             }}>
               {field("name", "Full name", "text", "", true)}
               {field("email", "Sign-in email", "email", "", true)}
+              <label>Reports to (organogram)
+                <select name="reportsToId" defaultValue="">
+                  <option value="">— top of organogram —</option>
+                  {data?.people.map(p => <option key={p.id} value={p.id}>{p.name}{p.title ? ` — ${p.title}` : ""}</option>)}
+                </select>
+              </label>
+              <label>Department
+                <select name="departmentId" defaultValue="">
+                  <option value="">—</option>
+                  {data?.departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </label>
               <label>Access role
-                <select name="role">
+                <select name="role" defaultValue="staff">
                   <option value="staff">Staff — own onboarding and leave</option>
-                  <option value="approver">Leave approver — review team leave</option>
+                  <option value="manager">Manager — approves leave for their reports</option>
                   <option value="viewer">Calendar viewer — team availability only</option>
                   <option value="admin">HR administrator — all staff records</option>
                 </select>
               </label>
+              <label className="check"><input type="checkbox" name="isFeeEarner" value="true" /> Fee-earner (must arrange matter cover for leave)</label>
               {error && <p className="error">{error}</p>}
               <div className="formfooter">
                 <button type="button" onClick={() => setShowAdd(false)}>Cancel</button>
