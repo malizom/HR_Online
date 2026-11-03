@@ -21,8 +21,8 @@ describe("tenancy guard", () => {
   });
 
   it("the application role is not a superuser and cannot bypass RLS", async () => {
-    const { rows: [r] } = await c.query(`select rolsuper, rolbypassrls from pg_roles where rolname='pp_app'`);
-    expect(r).toEqual({ rolsuper: false, rolbypassrls: false });
+    const { rows: [r] } = await c.query(`select rolsuper, rolbypassrls, rolcanlogin from pg_roles where rolname='pp_app'`);
+    expect(r).toEqual({ rolsuper: false, rolbypassrls: false, rolcanlogin: false }); // group role: no password exists
   });
 
   it("append-only tables cannot be updated or deleted by the application role", async () => {

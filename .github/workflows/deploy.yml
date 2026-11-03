@@ -1,0 +1,76 @@
+# Deploy (doc 01 §6). main -> staging automatically; tags v* -> production after environment approval.
+# No cloud secrets in GitHub: Azure login is OpenID Connect federation per environment.
+# GitHub environment variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, PARAM_FILE
+name: deploy
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment (staging, production, or a customer environment e.g. customer-mvr)
+        required: true
+        default: staging
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
+    concurrency: deploy-${{ github.event.inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
+    env:
+      RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Infrastructure (idempotent; keeps the running image)
+        id: infra
+        run: |
+          CURRENT=$(az containerapp show -g "$RG" -n pp-web --query "properties.template.containers[0].image" -o tsv 2>/dev/null || true)
+          OUT=$(az deployment group create -g "$RG" --name "pp-${{ github.run_number }}" \
+            --parameters "infra/params/${{ vars.PARAM_FILE }}" \
+            ${CURRENT:+--parameters image="$CURRENT"} \
+            --query properties.outputs -o json)
+          echo "acr=$(echo "$OUT" | jq -r .acrName.value)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        id: image
+        run: |
+          az acr login --name "${{ steps.infra.outputs.acr }}"
+          IMAGE="${{ steps.infra.outputs.acr }}.azurecr.io/people-portal:${{ github.sha }}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "ref=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate (one-off job, new image) — must succeed before rollout
+        run: |
+          az containerapp job update -g "$RG" -n pp-migrate --image "${{ steps.image.outputs.ref }}" -o none
+          EXEC=$(az containerapp job start -g "$RG" -n pp-migrate --query name -o tsv)
+          for i in $(seq 1 90); do
+            S=$(az containerapp job execution show -g "$RG" -n pp-migrate --job-execution-name "$EXEC" --query properties.status -o tsv)
+            [ "$S" = "Succeeded" ] && exit 0
+            [ "$S" = "Failed" ] && { echo "::error::Migration failed — see pp-migrate logs"; exit 1; }
+            sleep 10
+          done
+          echo "::error::Migration timed out"; exit 1
+
+      - name: Roll out web and jobs
+        run: |
+          az containerapp update -g "$RG" -n pp-web --image "${{ steps.image.outputs.ref }}" -o none
+          az containerapp job update -g "$RG" -n pp-jobs --image "${{ steps.image.outputs.ref }}" -o none
+
+      - name: Smoke test
+        run: |
+          FQDN=$(az containerapp show -g "$RG" -n pp-web --query properties.configuration.ingress.fqdn -o tsv)
+          for i in $(seq 1 30); do curl -fsS "https://$FQDN/api/ready" && exit 0; sleep 10; done
+          echo "::error::Readiness check failed; previous revision still serving — run docs/runbooks/rollback.md"; exit 1

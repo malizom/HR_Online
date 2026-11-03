@@ -1,0 +1,85 @@
+# CI (doc 01 §6): every PR and push to main. The tenancy guard and isolation tests are the first gate.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: owner
+          POSTGRES_PASSWORD: owner
+          POSTGRES_DB: people_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U owner" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # The app connects as the non-superuser role created by migration 0002, so RLS is really exercised.
+      MIGRATION_DATABASE_URL: postgresql://owner:owner@localhost:5432/people_ci
+      DATABASE_URL: postgresql://pp_app_login:ci_only_pw@localhost:5432/people_ci
+      DEV_APP_LOGIN_PASSWORD: ci_only_pw
+      AUTH_SECRET: ci-only-secret-0123456789abcdef0123456789
+      AUTH_TRUST_HOST: "true"
+      DEV_LOGIN: "true"
+      DEV_FIRM_SLUG: demo
+      DATA_ENCRYPTION_KEY: ZGV2LWtleS1kby1ub3QtdXNlLWluLXByb2R1Y3Rpb24tMzI=
+      UPLOAD_DIR: ./uploads
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Forbid tenant data access outside withFirm
+        run: |
+          if grep -RnE "new Pool\(|drizzle\(pool" --include=*.ts --include=*.tsx app modules jobs components; then
+            echo "Direct database pools are forbidden outside lib/db.ts"; exit 1; fi
+      - name: RLS migration is in sync with the schema
+        run: |
+          npx tsx scripts/gen-rls.mjs ./db/schema/index.ts /tmp/rls.sql
+          diff <(grep -v '^--' /tmp/rls.sql) <(grep -v '^--' db/migrations/0001_rls.sql) || (echo "Run npm run db:rls -- db/migrations/<new>.sql for new tables"; exit 1)
+      - name: Migrate + seed
+        run: npm run db:migrate && npm run db:seed
+      - name: Unit tests (tenancy isolation, guard, routing, workflow)
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: E2E smoke
+        run: |
+          npm i --no-save playwright@1.63.0 wait-on
+          npx playwright install --with-deps chromium
+          npm run db:seed   # idempotent
+          (npx next dev -p 3000 > next.log 2>&1 &)
+          npx wait-on -t 120000 http://localhost:3000/api/health
+          npm run test:e2e
+      - name: Dependency audit (high and critical)
+        run: npm audit --audit-level=high --omit=dev
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            next.log
+            tests/e2e/*.png
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bicep build (all parameter files)
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null
+          for p in infra/params/*.bicepparam; do az bicep build-params --file "$p" --stdout > /dev/null; done

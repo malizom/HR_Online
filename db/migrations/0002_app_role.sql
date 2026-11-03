@@ -1,8 +1,9 @@
--- Application role: a non-owner, non-superuser login so RLS always applies (doc 01 §3, §5).
--- In Azure the app's managed identity is mapped to this role by infra (pgaadauth); locally it is a password login.
+-- Application role (doc 01 §3, §5): a NOLOGIN group role so RLS always applies and no password exists.
+-- Logins are granted membership by scripts/migrate.ts: the app's managed identity in Azure,
+-- or the dev-only pp_app_login (local/CI, only when DEV_APP_LOGIN_PASSWORD is set).
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'pp_app') THEN
-    CREATE ROLE pp_app LOGIN PASSWORD 'pp_app_local_only';
+    CREATE ROLE pp_app NOLOGIN NOSUPERUSER NOBYPASSRLS;
   END IF;
 END $$;
 --> statement-breakpoint

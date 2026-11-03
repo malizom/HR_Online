@@ -9,9 +9,10 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import * as schema from "@/db/schema";
+import { pgPassword } from "./pg-auth";
 
 const g = globalThis as unknown as { __ppPool?: Pool };
-const pool = g.__ppPool ?? new Pool({ connectionString: process.env.DATABASE_URL, max: 10 });
+const pool = g.__ppPool ?? new Pool({ connectionString: process.env.DATABASE_URL, password: pgPassword(process.env.DATABASE_URL), max: 10, ssl: process.env.PG_SSL === "true" ? { rejectUnauthorized: true } : undefined });
 if (process.env.NODE_ENV !== "production") g.__ppPool = pool;
 
 const base = drizzle(pool, { schema });
