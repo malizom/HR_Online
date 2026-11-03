@@ -59,11 +59,12 @@ export async function provisionFirm(db: Db, input: ProvisionInput) {
       { firmId: f, code: "annual", label: "Annual", category: "annual", sort: 1 },
       { firmId: f, code: "sick", label: "Sick", category: "sick", requiresCover: true, reasonVisibleTo: "hr_only", sort: 2 },
       { firmId: f, code: "family", label: "Family responsibility", category: "family_responsibility", reasonVisibleTo: "hr_only", sort: 3 },
-      { firmId: f, code: "maternity", label: "Maternity", category: "maternity", isPaid: false, allowsHalfDay: false, sort: 4 },
-      { firmId: f, code: "parental", label: "Parental", category: "parental", allowsHalfDay: false, sort: 5 },
-      { firmId: f, code: "study", label: "Study / exam", category: "study", sort: 6 },
-      { firmId: f, code: "unpaid", label: "Unpaid", category: "unpaid", isPaid: false, sort: 7 },
-      { firmId: f, code: "other", label: "Other", category: "special", sort: 8 },
+      // One parental type for birth, adoption and surrogacy: Van Wyk v Minister of Employment and Labour [2025] ZACC 20
+      // (interim regime from 3 Oct 2025: 4 months + 10 days shared between employed parents). Design doc 04 §6.
+      { firmId: f, code: "parental", label: "Parental (birth, adoption, surrogacy)", category: "parental", isPaid: false, allowsHalfDay: false, requiresCover: true, sort: 4 },
+      { firmId: f, code: "study", label: "Study / exam", category: "study", sort: 5 },
+      { firmId: f, code: "unpaid", label: "Unpaid", category: "unpaid", isPaid: false, sort: 6 },
+      { firmId: f, code: "other", label: "Other", category: "special", sort: 7 },
     ]);
     await tx.insert(schema.inductionTemplates).values([
       { firmId: f, label: "Firm orientation with HR", owner: "hr", sort: 1 },
